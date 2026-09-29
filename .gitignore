@@ -1,8 +1,4 @@
 logs/*
-../analyse_logs/*
-../audit_securite/*
-../rapports/inventaire/*
-../rapports/rgpd/*
-../rapports/sauvegarde/*
-../rapports/supervision/*
+*.csv
+*.txt
 *.log

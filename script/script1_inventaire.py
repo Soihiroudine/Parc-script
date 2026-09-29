@@ -14,7 +14,7 @@ from datetime import datetime
 # CONFIGURATION
 # ============================================================
 
-RESEAU = "192.168.10.0/24"
+RESEAU = "192.168.10.0/24" # À modifier selon votre réseau
 
 DOSSIER_RAPPORTS = "Parc-script/rapports/inventaire"
 DOSSIER_LOGS = "Parc-script/logs"
