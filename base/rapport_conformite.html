@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>{{TITLE}}</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family:
+                Arial,
+                Helvetica,
+                sans-serif;
+
+            background: #f4f6f8;
+
+            color: #212529;
+
+            margin: 0;
+
+            padding: 30px;
+        }
+
+        .container {
+            max-width: 1100px;
+
+            margin: auto;
+
+            background: white;
+
+            padding: 30px;
+
+            border-radius: 8px;
+
+            box-shadow:
+                0 2px 10px
+                rgba(0, 0, 0, 0.08);
+        }
+
+        h1 {
+            color: #003b70;
+
+            margin-bottom: 5px;
+        }
+
+        h2 {
+            color: #003b70;
+
+            margin-top: 35px;
+        }
+
+        .subtitle {
+            color: #666;
+
+            margin-bottom: 25px;
+        }
+
+        .info {
+            display: grid;
+
+            grid-template-columns:
+                1fr 1fr;
+
+            gap: 10px;
+
+            background: #eef5fa;
+
+            padding: 20px;
+
+            border-radius: 6px;
+        }
+
+        .info div {
+            padding: 5px;
+        }
+
+        .score {
+            text-align: center;
+
+            padding: 25px;
+
+            margin-top: 20px;
+
+            border-radius: 8px;
+
+            color: white;
+
+            background: var(--global-color, #003b70);
+        }
+
+        .score-title {
+            font-size: 18px;
+
+            margin-bottom: 8px;
+        }
+
+        .score-value {
+            font-size: 40px;
+
+            font-weight: bold;
+        }
+
+        .score-percent {
+            margin-top: 5px;
+
+            font-size: 16px;
+        }
+
+        .summary {
+            display: flex;
+
+            gap: 15px;
+
+            margin-top: 20px;
+        }
+
+        .card {
+            flex: 1;
+
+            padding: 20px;
+
+            border-radius: 6px;
+
+            text-align: center;
+
+            font-size: 18px;
+        }
+
+        .card-number {
+            font-size: 30px;
+
+            font-weight: bold;
+
+            margin-top: 5px;
+        }
+
+        .ok {
+            background: #d1e7dd;
+
+            color: #0f5132;
+        }
+
+        .warning {
+            background: #fff3cd;
+
+            color: #664d03;
+        }
+
+        .ko {
+            background: #f8d7da;
+
+            color: #842029;
+        }
+
+        table {
+            width: 100%;
+
+            border-collapse: collapse;
+
+            margin-top: 15px;
+        }
+
+        th {
+            background: #003b70;
+
+            color: white;
+
+            padding: 12px;
+
+            text-align: left;
+        }
+
+        td {
+            padding: 12px;
+
+            border-bottom:
+                1px solid #ddd;
+
+            vertical-align: top;
+        }
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        .badge {
+            color: white;
+
+            padding: 6px 10px;
+
+            border-radius: 5px;
+
+            font-weight: bold;
+
+            display: inline-block;
+
+            white-space: nowrap;
+        }
+
+        .footer {
+            margin-top: 35px;
+
+            color: #6c757d;
+
+            font-size: 13px;
+
+            text-align: center;
+
+            border-top:
+                1px solid #ddd;
+
+            padding-top: 15px;
+        }
+
+        @media (max-width: 700px) {
+
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 15px;
+            }
+
+            .info {
+                grid-template-columns:
+                    1fr;
+            }
+
+            .summary {
+                flex-direction: column;
+            }
+
+            table {
+                font-size: 13px;
+            }
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>
+        Audit de conformité sécurité
+    </h1>
+
+    <div class="subtitle">
+        {{SUBTITLE}}
+    </div>
+
+
+    <div class="info">
+
+        <div>
+            <strong>Serveur :</strong>
+            {{HOSTNAME}}
+        </div>
+
+        <div>
+            <strong>Système :</strong>
+            {{OS}}
+        </div>
+
+        <div>
+            <strong>Noyau :</strong>
+            {{KERNEL}}
+        </div>
+
+        <div>
+            <strong>Date :</strong>
+            {{DATE}}
+        </div>
+
+    </div>
+
+
+    <div class="score">
+
+        <div class="score-title">
+            État global
+        </div>
+
+        <div class="score-value">
+            {{GLOBAL_STATUS}}
+        </div>
+
+        <div class="score-percent">
+            Score indicatif :
+            <strong>{{SCORE}}%</strong>
+        </div>
+
+    </div>
+
+
+    <div class="summary">
+
+        <div class="card ok">
+
+            <strong>OK</strong>
+
+            <div class="card-number">
+                {{OK_COUNT}}
+            </div>
+
+        </div>
+
+
+        <div class="card warning">
+
+            <strong>AVERTISSEMENT</strong>
+
+            <div class="card-number">
+                {{WARNING_COUNT}}
+            </div>
+
+        </div>
+
+
+        <div class="card ko">
+
+            <strong>NON CONFORME</strong>
+
+            <div class="card-number">
+                {{KO_COUNT}}
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <h2>
+        Résultats des contrôles
+    </h2>
+
+
+    <table>
+
+        <thead>
+
+            <tr>
+
+                <th>
+                    #
+                </th>
+
+                <th>
+                    Critère
+                </th>
+
+                <th>
+                    Résultat
+                </th>
+
+                <th>
+                    Détails
+                </th>
+
+            </tr>
+
+        </thead>
+
+
+        <tbody>
+
+            {{RESULTS_ROWS}}
+
+        </tbody>
+
+    </table>
+
+
+    <div class="footer">
+
+        Rapport généré automatiquement par
+        <strong>
+            script2_audit_securite.py
+        </strong>
+
+    </div>
+
+</div>
+
+</body>
+
+</html>
