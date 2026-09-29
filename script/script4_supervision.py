@@ -10,22 +10,25 @@ Fichier :
     script4_supervision.py
 
 Objectif :
-    Surveiller en temps réel la disponibilité des services
-    critiques et envoyer une alerte en cas de panne.
+    Détecter automatiquement les services TCP en écoute
+    sur la machine et surveiller leur disponibilité.
 
 Fonctionnalités :
-    - Surveillance de plusieurs services TCP
-    - Test IP + port
-    - Vérification toutes les X secondes
-    - Journalisation avec horodatage
+    - Découverte automatique des ports TCP en écoute
+    - Identification automatique de certains services
+    - Test automatique IP + port
+    - Surveillance périodique
+    - Logs horodatés
     - Détection d'une panne après 3 échecs consécutifs
-    - Journal des incidents
-    - Alerte e-mail
+    - Journalisation des incidents
     - Détection du retour à la normale
     - Calcul du taux de disponibilité
-    - Génération automatique d'un rapport SLA
+    - Génération d'un rapport SLA
+    - Partie e-mail préparée mais désactivée
 
-Arborescence attendue :
+Aucune liste de services n'est nécessaire.
+
+Arborescence :
 
     PROJET/
     │
@@ -42,152 +45,188 @@ Arborescence attendue :
 ============================================================
 """
 
+
+# ============================================================
+#                         IMPORTS
+# ============================================================
+
 import socket
 import time
 import logging
-import smtplib
 import signal
 import sys
+import subprocess
+import platform
 
 from pathlib import Path
 from datetime import datetime
-from email.message import EmailMessage
 
 
 # ============================================================
-#                    CONFIGURATION GÉNÉRALE
+#                    CONFIGURATION
 # ============================================================
 
-# Temps entre deux cycles de surveillance.
+# Temps entre deux cycles de supervision.
 #
-# Pour un test rapide, tu peux mettre :
+# Pour tester rapidement :
 # INTERVALLE_TEST = 10
 #
-# Pour le projet réel :
+# Pour le projet :
 # INTERVALLE_TEST = 30
 INTERVALLE_TEST = 30
 
-# Nombre d'échecs consécutifs nécessaires
-# pour confirmer une panne.
+
+# Nombre d'échecs consécutifs avant de confirmer
+# une panne.
 SEUIL_ECHECS = 3
 
-# Temps maximum pour tenter une connexion.
+
+# Temps maximum pour tester un port.
 TIMEOUT = 5
+
 
 # Objectif SLA.
 SLA_CIBLE = 99.9
 
 
-# ============================================================
-#                       SERVICES
-# ============================================================
-
-"""
-Liste des services à surveiller.
-
-Chaque service possède :
-    - nom
-    - ip
-    - port
-
-IMPORTANT :
-    Remplace les adresses IP et les ports par ceux
-    correspondant à ton environnement.
-"""
-
-SERVICES = [
-    {
-        "nom": "Serveur Web",
-        "ip": "192.168.1.10",
-        "port": 80
-    },
-    {
-        "nom": "Serveur SSH",
-        "ip": "192.168.1.20",
-        "port": 22
-    },
-    {
-        "nom": "Serveur Application",
-        "ip": "192.168.1.30",
-        "port": 8080
-    }
-]
+# Adresse locale à surveiller.
+ADRESSE_LOCALE = "127.0.0.1"
 
 
 # ============================================================
-#                    CONFIGURATION EMAIL
+#              SERVICES TCP CONNUS
 # ============================================================
 
 """
-Configuration de l'envoi d'e-mails.
+Cette liste ne sert PAS à définir les services à surveiller.
 
-Par défaut, les e-mails sont désactivés.
+Elle sert uniquement à donner un nom compréhensible
+aux ports automatiquement découverts.
 
-Pour activer :
+Exemples :
 
-    EMAIL_ACTIF = True
+    22   -> SSH
+    53   -> DNS
+    80   -> HTTP
+    443  -> HTTPS
+    3306 -> MySQL
+    5432 -> PostgreSQL
+    8080 -> HTTP-ALT
 
-Puis renseigne les paramètres SMTP.
+Si un port n'est pas dans cette liste, le programme
+l'appellera automatiquement :
+
+    Service TCP - port XXXX
+"""
+
+SERVICES_CONNUS = {
+
+    20: "FTP-Data",
+    21: "FTP",
+    22: "SSH",
+    23: "Telnet",
+    25: "SMTP",
+    53: "DNS",
+    80: "HTTP",
+    110: "POP3",
+    143: "IMAP",
+    443: "HTTPS",
+    465: "SMTPS",
+    587: "SMTP",
+    993: "IMAPS",
+    995: "POP3S",
+    1433: "Microsoft SQL Server",
+    1521: "Oracle",
+    2049: "NFS",
+    2375: "Docker",
+    2376: "Docker TLS",
+    3000: "Application Web",
+    3306: "MySQL",
+    3389: "RDP",
+    5000: "Application Web",
+    5432: "PostgreSQL",
+    5672: "RabbitMQ",
+    6379: "Redis",
+    6443: "Kubernetes API",
+    8000: "Application Web",
+    8080: "HTTP-ALT",
+    8081: "Application Web",
+    8443: "HTTPS-ALT",
+    9000: "Application",
+    9090: "Prometheus",
+    9200: "Elasticsearch",
+    27017: "MongoDB"
+
+}
+
+
+# ============================================================
+#                  CONFIGURATION E-MAIL
+# ============================================================
+
+"""
+============================================================
+PARTIE E-MAIL DÉSACTIVÉE
+============================================================
+
+La partie e-mail est conservée en commentaire.
+
+Elle pourra être activée plus tard.
 
 Exemple Gmail :
 
     SMTP_SERVEUR = "smtp.gmail.com"
     SMTP_PORT = 587
 
-Il est recommandé d'utiliser un mot de passe
-d'application avec Gmail.
+    SMTP_UTILISATEUR = "monadresse@gmail.com"
+    SMTP_MOT_DE_PASSE = "mot_de_passe_application"
+
+    EMAIL_DESTINATAIRE = "administrateur@example.com"
 """
 
-EMAIL_ACTIF = False
 
-SMTP_SERVEUR = "smtp.gmail.com"
-SMTP_PORT = 587
+# SMTP_SERVEUR = "smtp.gmail.com"
+# SMTP_PORT = 587
 
-SMTP_UTILISATEUR = "monadresse@gmail.com"
-SMTP_MOT_DE_PASSE = "MOT_DE_PASSE_APPLICATION"
+# SMTP_UTILISATEUR = "monadresse@gmail.com"
+# SMTP_MOT_DE_PASSE = "mot_de_passe_application"
 
-EMAIL_DESTINATAIRE = "administrateur@example.com"
+# EMAIL_DESTINATAIRE = "administrateur@example.com"
 
 
 # ============================================================
-#                     STRUCTURE DU PROJET
+#                  STRUCTURE DU PROJET
 # ============================================================
 
-"""
-Le script se trouve dans :
-
-    PROJET/script/script4_supervision.py
-
-Donc :
-
-    DOSSIER_SCRIPT = PROJET/script
-    DOSSIER_PROJET = PROJET
-
-Les fichiers seront automatiquement placés dans :
-
-    PROJET/logs/
-    PROJET/rapports/supervision/
-"""
-
-
-# Dossier dans lequel se trouve ce script.
+# Dossier contenant ce script.
 DOSSIER_SCRIPT = Path(__file__).resolve().parent
+
 
 # Dossier principal du projet.
 DOSSIER_PROJET = DOSSIER_SCRIPT.parent
 
-# Dossier contenant les fichiers de logs.
+
+# Dossier des logs.
 DOSSIER_LOGS = DOSSIER_PROJET / "logs"
 
-# Dossier contenant les rapports.
-DOSSIER_RAPPORTS = DOSSIER_PROJET / "rapports" / "supervision"
+
+# Dossier des rapports.
+DOSSIER_RAPPORTS = (
+    DOSSIER_PROJET
+    / "rapports"
+    / "supervision"
+)
 
 
-# Création automatique des dossiers.
+# ============================================================
+#                    CRÉATION DES DOSSIERS
+# ============================================================
+
 DOSSIER_LOGS.mkdir(
     parents=True,
     exist_ok=True
 )
+
 
 DOSSIER_RAPPORTS.mkdir(
     parents=True,
@@ -196,46 +235,66 @@ DOSSIER_RAPPORTS.mkdir(
 
 
 # ============================================================
-#                         FICHIERS
+#                       FICHIERS
 # ============================================================
 
-FICHIER_LOG = DOSSIER_LOGS / "supervision.log"
+FICHIER_LOG = (
+    DOSSIER_LOGS
+    / "supervision.log"
+)
 
-FICHIER_INCIDENTS = DOSSIER_LOGS / "incidents.log"
 
-FICHIER_RAPPORT = DOSSIER_RAPPORTS / "rapport_sla.txt"
+FICHIER_INCIDENTS = (
+    DOSSIER_LOGS
+    / "incidents.log"
+)
+
+
+FICHIER_RAPPORT = (
+    DOSSIER_RAPPORTS
+    / "rapport_sla.txt"
+)
 
 
 # ============================================================
-#                       VARIABLE GLOBALE
+#                   VARIABLE GLOBALE
 # ============================================================
 
-# Permet d'arrêter proprement le programme.
 PROGRAMME_ACTIF = True
 
 
 # ============================================================
-#                         LOGGING
+#                       LOGGING
 # ============================================================
 
 logging.basicConfig(
+
     filename=str(FICHIER_LOG),
+
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
+
+    format=(
+        "%(asctime)s | "
+        "%(levelname)s | "
+        "%(message)s"
+    ),
+
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 
-logger = logging.getLogger("supervision")
+
+logger = logging.getLogger(
+    "supervision"
+)
 
 
 # ============================================================
-#                     GESTION DE CTRL+C
+#                    CTRL + C
 # ============================================================
 
 def arreter_programme(signal_num, frame):
     """
-    Arrête proprement le programme lorsque l'utilisateur
-    appuie sur Ctrl+C.
+    Arrête proprement le programme avec Ctrl+C.
     """
 
     global PROGRAMME_ACTIF
@@ -246,11 +305,10 @@ def arreter_programme(signal_num, frame):
     print("Arrêt de la supervision demandé...")
 
     logger.info(
-        "Arrêt de la supervision demandé par l'utilisateur."
+        "Arrêt demandé par l'utilisateur."
     )
 
 
-# Capture Ctrl+C.
 signal.signal(
     signal.SIGINT,
     arreter_programme
@@ -258,56 +316,526 @@ signal.signal(
 
 
 # ============================================================
-#                     TEST DU SERVICE
+#              IDENTIFICATION D'UN SERVICE
 # ============================================================
 
-def tester_service(ip, port, timeout=TIMEOUT):
+def obtenir_nom_service(port):
+    """
+    Retourne un nom lisible pour un port.
+
+    Si le port est connu, on utilise son nom.
+
+    Sinon :
+        Service TCP - port XXXX
+    """
+
+    if port in SERVICES_CONNUS:
+
+        return SERVICES_CONNUS[port]
+
+    return f"Service TCP - port {port}"
+
+
+# ============================================================
+#            DÉTECTION DES PORTS SOUS LINUX
+# ============================================================
+
+def decouvrir_ports_linux():
+    """
+    Détecte les ports TCP en écoute sous Linux.
+
+    Utilise /proc/net/tcp et /proc/net/tcp6.
+
+    Retourne une liste de ports.
+    """
+
+    ports = set()
+
+
+    fichiers = [
+        "/proc/net/tcp",
+        "/proc/net/tcp6"
+    ]
+
+
+    for chemin in fichiers:
+
+        try:
+
+            with open(
+                chemin,
+                "r",
+                encoding="utf-8"
+            ) as fichier:
+
+                lignes = fichier.readlines()
+
+
+            # La première ligne contient les noms des colonnes.
+            for ligne in lignes[1:]:
+
+                elements = ligne.split()
+
+
+                # Vérification de la longueur.
+                if len(elements) < 4:
+                    continue
+
+
+                adresse_locale = elements[1]
+
+                etat = elements[3]
+
+
+                # État 0A = LISTEN
+                if etat != "0A":
+                    continue
+
+
+                # Format :
+                #
+                # adresse_hex:port_hex
+                #
+                # Exemple :
+                #
+                # 0100007F:0016
+                #
+
+                try:
+
+                    port_hex = (
+                        adresse_locale
+                        .split(":")[1]
+                    )
+
+                    port = int(
+                        port_hex,
+                        16
+                    )
+
+                    ports.add(port)
+
+                except (
+                    ValueError,
+                    IndexError
+                ):
+
+                    continue
+
+
+        except FileNotFoundError:
+
+            continue
+
+
+        except PermissionError:
+
+            logger.warning(
+                "Permission refusée pour %s",
+                chemin
+            )
+
+
+        except Exception as erreur:
+
+            logger.error(
+                "Erreur lecture %s : %s",
+                chemin,
+                erreur
+            )
+
+
+    return sorted(ports)
+
+
+# ============================================================
+#             DÉTECTION DES PORTS SOUS WINDOWS
+# ============================================================
+
+def decouvrir_ports_windows():
+    """
+    Détecte les ports TCP en écoute sous Windows
+    à l'aide de netstat.
+    """
+
+    ports = set()
+
+
+    try:
+
+        resultat = subprocess.run(
+
+            [
+                "netstat",
+                "-ano"
+            ],
+
+            capture_output=True,
+
+            text=True,
+
+            timeout=10,
+
+            encoding="cp850",
+
+            errors="replace"
+
+        )
+
+
+        for ligne in resultat.stdout.splitlines():
+
+            ligne = ligne.strip()
+
+
+            if not ligne:
+                continue
+
+
+            # On s'intéresse uniquement aux lignes TCP.
+            if not ligne.upper().startswith("TCP"):
+                continue
+
+
+            elements = ligne.split()
+
+
+            # Une ligne netstat classique :
+            #
+            # TCP
+            # Adresse locale
+            # Adresse distante
+            # Etat
+            # PID
+            #
+
+            if len(elements) < 4:
+                continue
+
+
+            etat = elements[3].upper()
+
+
+            if etat != "LISTENING":
+                continue
+
+
+            adresse_locale = elements[1]
+
+
+            try:
+
+                port = int(
+                    adresse_locale.rsplit(
+                        ":",
+                        1
+                    )[1]
+                )
+
+                ports.add(port)
+
+            except (
+                ValueError,
+                IndexError
+            ):
+
+                continue
+
+
+    except FileNotFoundError:
+
+        logger.error(
+            "La commande netstat "
+            "n'est pas disponible."
+        )
+
+
+    except subprocess.TimeoutExpired:
+
+        logger.error(
+            "Timeout lors de l'exécution de netstat."
+        )
+
+
+    except Exception as erreur:
+
+        logger.error(
+            "Erreur lors de la découverte "
+            "des ports Windows : %s",
+            erreur
+        )
+
+
+    return sorted(ports)
+
+
+# ============================================================
+#             DÉTECTION DES PORTS SOUS MACOS
+# ============================================================
+
+def decouvrir_ports_macos():
+    """
+    Détecte les ports TCP en écoute sous macOS.
+
+    Utilise la commande lsof si disponible.
+    """
+
+    ports = set()
+
+
+    try:
+
+        resultat = subprocess.run(
+
+            [
+                "lsof",
+                "-nP",
+                "-iTCP",
+                "-sTCP:LISTEN"
+            ],
+
+            capture_output=True,
+
+            text=True,
+
+            timeout=10,
+
+            encoding="utf-8",
+
+            errors="replace"
+
+        )
+
+
+        for ligne in resultat.stdout.splitlines():
+
+            ligne = ligne.strip()
+
+
+            if not ligne:
+                continue
+
+
+            # Les informations de réseau se trouvent
+            # généralement dans la colonne finale.
+            elements = ligne.split()
+
+
+            if len(elements) < 9:
+                continue
+
+
+            derniere_colonne = elements[-1]
+
+
+            # Exemple :
+            #
+            # 127.0.0.1:8080
+            # *:80
+            #
+
+            if ":" not in derniere_colonne:
+                continue
+
+
+            try:
+
+                port = int(
+                    derniere_colonne
+                    .rsplit(":", 1)[1]
+                )
+
+                ports.add(port)
+
+            except (
+                ValueError,
+                IndexError
+            ):
+
+                continue
+
+
+    except FileNotFoundError:
+
+        logger.error(
+            "La commande lsof "
+            "n'est pas disponible."
+        )
+
+
+    except Exception as erreur:
+
+        logger.error(
+            "Erreur lors de la découverte "
+            "des ports macOS : %s",
+            erreur
+        )
+
+
+    return sorted(ports)
+
+
+# ============================================================
+#             DÉCOUVERTE AUTOMATIQUE
+# ============================================================
+
+def decouvrir_services():
+    """
+    Détecte automatiquement les services TCP locaux.
+
+    Le programme choisit la méthode adaptée au système
+    d'exploitation.
+
+    Retourne une liste de dictionnaires :
+
+        {
+            "nom": "...",
+            "ip": "127.0.0.1",
+            "port": 80
+        }
+    """
+
+    systeme = platform.system()
+
+
+    logger.info(
+        "Système détecté : %s",
+        systeme
+    )
+
+
+    # --------------------------------------------------------
+    # Linux
+    # --------------------------------------------------------
+
+    if systeme == "Linux":
+
+        ports = decouvrir_ports_linux()
+
+
+    # --------------------------------------------------------
+    # Windows
+    # --------------------------------------------------------
+
+    elif systeme == "Windows":
+
+        ports = decouvrir_ports_windows()
+
+
+    # --------------------------------------------------------
+    # macOS
+    # --------------------------------------------------------
+
+    elif systeme == "Darwin":
+
+        ports = decouvrir_ports_macos()
+
+
+    # --------------------------------------------------------
+    # Système inconnu
+    # --------------------------------------------------------
+
+    else:
+
+        logger.error(
+            "Système d'exploitation non supporté : %s",
+            systeme
+        )
+
+        ports = []
+
+
+    # ========================================================
+    # Création des services
+    # ========================================================
+
+    services = []
+
+
+    for port in ports:
+
+        nom = obtenir_nom_service(
+            port
+        )
+
+
+        service = {
+
+            "nom": nom,
+
+            "ip": ADRESSE_LOCALE,
+
+            "port": port
+
+        }
+
+
+        services.append(
+            service
+        )
+
+
+    # Log de la découverte.
+    logger.info(
+        "%s service(s) découvert(s).",
+        len(services)
+    )
+
+
+    return services
+
+
+# ============================================================
+#                    TEST D'UN SERVICE
+# ============================================================
+
+def tester_service(
+    ip,
+    port,
+    timeout=TIMEOUT
+):
     """
     Teste la disponibilité d'un service TCP.
-
-    Paramètres :
-        ip      : adresse IP du service
-        port    : port TCP
-        timeout : délai maximum de connexion
-
-    Retour :
-        True  -> service disponible
-        False -> service indisponible
     """
 
     socket_test = None
 
+
     try:
 
-        # Création d'un socket TCP.
         socket_test = socket.socket(
             socket.AF_INET,
             socket.SOCK_STREAM
         )
 
-        # Définition du timeout.
-        socket_test.settimeout(timeout)
 
-        # Tentative de connexion.
+        socket_test.settimeout(
+            timeout
+        )
+
+
         resultat = socket_test.connect_ex(
             (ip, port)
         )
 
-        # Si le résultat est 0 :
-        # la connexion a réussi.
+
         if resultat == 0:
+
             return True
 
+
         return False
+
 
     except socket.error:
 
         return False
 
+
     except Exception as erreur:
 
         logger.error(
-            "Erreur lors du test de %s:%s : %s",
+            "Erreur test %s:%s : %s",
             ip,
             port,
             erreur
@@ -315,85 +843,77 @@ def tester_service(ip, port, timeout=TIMEOUT):
 
         return False
 
+
     finally:
 
-        # Fermeture du socket.
         if socket_test is not None:
 
             try:
+
                 socket_test.close()
 
             except Exception:
+
                 pass
 
 
 # ============================================================
-#                    ENVOI D'UN EMAIL
+#                PARTIE E-MAIL DÉSACTIVÉE
 # ============================================================
 
-def envoyer_email(sujet, message):
-    """
-    Envoie une alerte par e-mail.
+"""
+La fonction d'envoi d'e-mail est volontairement
+commentée.
 
-    Si EMAIL_ACTIF vaut False, aucun e-mail
-    ne sera envoyé.
-    """
+Elle pourra être activée ultérieurement.
 
-    # Si les e-mails sont désactivés.
-    if not EMAIL_ACTIF:
-
-        logger.info(
-            "Alerte e-mail désactivée : %s",
-            sujet
-        )
-
-        return
+"""
 
 
-    try:
-
-        # Création du message.
-        email = EmailMessage()
-
-        email["Subject"] = sujet
-        email["From"] = SMTP_UTILISATEUR
-        email["To"] = EMAIL_DESTINATAIRE
-
-        email.set_content(message)
-
-
-        # Connexion au serveur SMTP.
-        with smtplib.SMTP(
-            SMTP_SERVEUR,
-            SMTP_PORT,
-            timeout=15
-        ) as serveur:
-
-            # Activation de STARTTLS.
-            serveur.starttls()
-
-            # Connexion au compte SMTP.
-            serveur.login(
-                SMTP_UTILISATEUR,
-                SMTP_MOT_DE_PASSE
-            )
-
-            # Envoi du message.
-            serveur.send_message(email)
-
-
-        logger.info(
-            "Alerte e-mail envoyée : %s",
-            sujet
-        )
-
-
-    except Exception as erreur:
-
-        logger.error(
-            "Erreur lors de l'envoi de l'e-mail : %s",
-            erreur
-        )
+# def envoyer_email(sujet, message):
+#
+#     from email.message import EmailMessage
+#     import smtplib
+#
+#     try:
+#
+#         email = EmailMessage()
+#
+#         email["Subject"] = sujet
+#         email["From"] = SMTP_UTILISATEUR
+#         email["To"] = EMAIL_DESTINATAIRE
+#
+#         email.set_content(message)
+#
+#
+#         with smtplib.SMTP(
+#             SMTP_SERVEUR,
+#             SMTP_PORT,
+#             timeout=15
+#         ) as serveur:
+#
+#             serveur.starttls()
+#
+#             serveur.login(
+#                 SMTP_UTILISATEUR,
+#                 SMTP_MOT_DE_PASSE
+#             )
+#
+#             serveur.send_message(email)
+#
+#
+#         logger.info(
+#             "E-mail envoyé : %s",
+#             sujet
+#         )
+#
+#
+#     except Exception as erreur:
+#
+#         logger.error(
+#             "Erreur e-mail : %s",
+#             erreur
+#         )
 
 
 # ============================================================
@@ -409,6 +929,7 @@ def enregistrer_incident(message):
         "%Y-%m-%d %H:%M:%S"
     )
 
+
     ligne = (
         f"{date} | {message}\n"
     )
@@ -422,13 +943,15 @@ def enregistrer_incident(message):
             encoding="utf-8"
         ) as fichier:
 
-            fichier.write(ligne)
+            fichier.write(
+                ligne
+            )
 
 
     except Exception as erreur:
 
         logger.error(
-            "Impossible d'écrire dans incidents.log : %s",
+            "Erreur écriture incident : %s",
             erreur
         )
 
@@ -439,11 +962,7 @@ def enregistrer_incident(message):
 
 def calculer_sla(statistiques):
     """
-    Calcule le taux de disponibilité de chaque service.
-
-    Formule :
-
-        SLA = (tests réussis / tests totaux) * 100
+    Calcule le SLA de chaque service.
     """
 
     resultats = {}
@@ -452,6 +971,7 @@ def calculer_sla(statistiques):
     for nom, stats in statistiques.items():
 
         total = stats["total"]
+
         succes = stats["succes"]
 
 
@@ -473,7 +993,7 @@ def calculer_sla(statistiques):
 
 
 # ============================================================
-#                   RAPPORT SLA
+#                  GÉNÉRATION DU RAPPORT
 # ============================================================
 
 def generer_rapport(
@@ -482,9 +1002,7 @@ def generer_rapport(
     date_fin
 ):
     """
-    Génère le fichier :
-
-        rapports/supervision/rapport_sla.txt
+    Génère le rapport SLA.
     """
 
     slas = calculer_sla(
@@ -505,82 +1023,95 @@ def generer_rapport(
             # ------------------------------------------------
 
             fichier.write(
-                "=" * 75 + "\n"
+                "=" * 80 + "\n"
             )
 
             fichier.write(
-                "                 RAPPORT DE SLA\n"
+                "             RAPPORT DE SUPERVISION SLA\n"
             )
 
             fichier.write(
-                "=" * 75 + "\n\n"
+                "=" * 80 + "\n\n"
             )
 
 
             # ------------------------------------------------
-            # Informations générales
+            # Informations
             # ------------------------------------------------
 
             fichier.write(
-                "Informations générales\n"
+                "INFORMATIONS GÉNÉRALES\n"
             )
 
             fichier.write(
-                "-" * 75 + "\n"
+                "-" * 80 + "\n"
             )
 
-            fichier.write(
-                "Début de surveillance : "
-                f"{date_debut.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            )
 
             fichier.write(
-                "Fin de surveillance   : "
-                f"{date_fin.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                "Début : "
+                + date_debut.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                + "\n"
             )
 
+
             fichier.write(
-                f"Intervalle de test    : "
+                "Fin   : "
+                + date_fin.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                + "\n"
+            )
+
+
+            fichier.write(
+                f"Intervalle : "
                 f"{INTERVALLE_TEST} secondes\n"
             )
 
+
             fichier.write(
-                f"Seuil de panne        : "
+                f"Seuil panne : "
                 f"{SEUIL_ECHECS} échecs consécutifs\n"
             )
 
+
             fichier.write(
-                f"Objectif SLA          : "
+                f"Objectif SLA : "
                 f"{SLA_CIBLE:.3f} %\n"
             )
+
 
             fichier.write("\n")
 
 
             # ------------------------------------------------
-            # Tableau des services
+            # Tableau
             # ------------------------------------------------
 
             fichier.write(
-                "Disponibilité des services\n"
+                "SERVICES SURVEILLÉS\n"
             )
 
             fichier.write(
-                "-" * 75 + "\n"
+                "-" * 80 + "\n"
             )
 
 
             fichier.write(
-                f"{'Service':25}"
+                f"{'Service':30}"
+                f"{'Port':>10}"
                 f"{'Tests':>10}"
                 f"{'OK':>10}"
                 f"{'Échecs':>10}"
-                f"{'SLA':>15}\n"
+                f"{'SLA':>10}\n"
             )
 
 
             fichier.write(
-                "-" * 75 + "\n"
+                "-" * 80 + "\n"
             )
 
 
@@ -588,22 +1119,26 @@ def generer_rapport(
 
                 sla = slas[nom]
 
+                port = stats["port"]
+
+
                 fichier.write(
-                    f"{nom[:25]:25}"
+                    f"{nom[:30]:30}"
+                    f"{port:>10}"
                     f"{stats['total']:>10}"
                     f"{stats['succes']:>10}"
                     f"{stats['echecs']:>10}"
-                    f"{sla:>14.3f} %\n"
+                    f"{sla:>9.3f}%\n"
                 )
 
 
             fichier.write(
-                "-" * 75 + "\n\n"
+                "-" * 80 + "\n\n"
             )
 
 
             # ------------------------------------------------
-            # Calcul global
+            # Statistiques globales
             # ------------------------------------------------
 
             total_global = sum(
@@ -611,10 +1146,12 @@ def generer_rapport(
                 for stats in statistiques.values()
             )
 
+
             succes_global = sum(
                 stats["succes"]
                 for stats in statistiques.values()
             )
+
 
             echecs_global = sum(
                 stats["echecs"]
@@ -625,8 +1162,8 @@ def generer_rapport(
             if total_global > 0:
 
                 sla_global = (
-                    succes_global /
-                    total_global
+                    succes_global
+                    / total_global
                 ) * 100
 
             else:
@@ -634,51 +1171,52 @@ def generer_rapport(
                 sla_global = 0.0
 
 
-            # ------------------------------------------------
-            # Résumé global
-            # ------------------------------------------------
-
             fichier.write(
-                "Résumé global\n"
+                "RÉSUMÉ GLOBAL\n"
             )
 
             fichier.write(
-                "-" * 75 + "\n"
+                "-" * 80 + "\n"
             )
+
 
             fichier.write(
                 f"Nombre total de tests : "
                 f"{total_global}\n"
             )
 
+
             fichier.write(
                 f"Tests réussis         : "
                 f"{succes_global}\n"
             )
+
 
             fichier.write(
                 f"Tests échoués         : "
                 f"{echecs_global}\n"
             )
 
+
             fichier.write(
                 f"SLA global            : "
                 f"{sla_global:.3f} %\n"
             )
 
+
             fichier.write("\n")
 
 
             # ------------------------------------------------
-            # Comparaison avec l'objectif
+            # Objectif
             # ------------------------------------------------
 
             fichier.write(
-                "Résultat par rapport à l'objectif\n"
+                "OBJECTIF SLA\n"
             )
 
             fichier.write(
-                "-" * 75 + "\n"
+                "-" * 80 + "\n"
             )
 
 
@@ -697,8 +1235,9 @@ def generer_rapport(
 
             fichier.write("\n")
 
+
             fichier.write(
-                "=" * 75 + "\n"
+                "=" * 80 + "\n"
             )
 
 
@@ -711,13 +1250,13 @@ def generer_rapport(
     except Exception as erreur:
 
         logger.error(
-            "Erreur lors de la génération du rapport : %s",
+            "Erreur génération rapport : %s",
             erreur
         )
 
 
 # ============================================================
-#                    AFFICHAGE CONSOLE
+#                 AFFICHAGE D'UN RÉSULTAT
 # ============================================================
 
 def afficher_resultat(
@@ -726,15 +1265,18 @@ def afficher_resultat(
     echecs_consecutifs
 ):
     """
-    Affiche le résultat d'un test dans le terminal.
+    Affiche le résultat d'un test.
     """
 
     date = datetime.now().strftime(
         "%Y-%m-%d %H:%M:%S"
     )
 
+
     nom = service["nom"]
+
     ip = service["ip"]
+
     port = service["port"]
 
 
@@ -746,6 +1288,7 @@ def afficher_resultat(
             f"{nom} "
             f"({ip}:{port})"
         )
+
 
     else:
 
@@ -760,91 +1303,207 @@ def afficher_resultat(
 
 
 # ============================================================
-#                  AFFICHAGE CONFIGURATION
+#              AFFICHAGE DES SERVICES DÉTECTÉS
 # ============================================================
 
-def afficher_configuration():
+def afficher_services(services):
     """
-    Affiche la configuration actuelle.
+    Affiche les services automatiquement détectés.
     """
 
     print()
-    print("=" * 75)
-    print(
-        "       S4 - SUPERVISION ET ALERTE DES SERVICES"
-    )
-    print("=" * 75)
-
-    print()
 
     print(
-        f"Dossier du projet : "
-        f"{DOSSIER_PROJET}"
-    )
-
-    print(
-        f"Dossier des logs  : "
-        f"{DOSSIER_LOGS}"
-    )
-
-    print(
-        f"Dossier rapports  : "
-        f"{DOSSIER_RAPPORTS}"
+        f"{len(services)} service(s) "
+        "TCP détecté(s) automatiquement."
     )
 
     print()
 
-    print(
-        f"Intervalle        : "
-        f"{INTERVALLE_TEST} secondes"
-    )
+
+    if not services:
+
+        print(
+            "Aucun service TCP en écoute détecté."
+        )
+
+        print()
+
+        return
+
 
     print(
-        f"Seuil de panne    : "
-        f"{SEUIL_ECHECS} échecs"
+        "Services détectés :"
     )
 
-    print(
-        f"Timeout           : "
-        f"{TIMEOUT} secondes"
-    )
 
-    print(
-        f"SLA cible         : "
-        f"{SLA_CIBLE:.1f} %"
-    )
-
-    print(
-        f"Nombre de services: "
-        f"{len(SERVICES)}"
-    )
-
-    print()
-
-    print("Services surveillés :")
-
-    for service in SERVICES:
+    for service in services:
 
         print(
             f"  - {service['nom']} "
-            f"({service['ip']}:{service['port']})"
+            f"-> "
+            f"{service['ip']}:{service['port']}"
         )
+
 
     print()
 
-    if EMAIL_ACTIF:
 
-        print(
-            "Alerte e-mail     : ACTIVÉE"
+# ============================================================
+#                 INITIALISATION STATISTIQUES
+# ============================================================
+
+def initialiser_statistiques(services):
+    """
+    Crée les statistiques pour les services détectés.
+    """
+
+    statistiques = {}
+
+
+    for service in services:
+
+        nom = service["nom"]
+
+
+        # Si deux services ont le même nom,
+        # on ajoute le port pour les différencier.
+
+        if nom in statistiques:
+
+            nom = (
+                f"{service['nom']} "
+                f"({service['port']})"
+            )
+
+            service["nom"] = nom
+
+
+        statistiques[nom] = {
+
+            "port": service["port"],
+
+            "total": 0,
+
+            "succes": 0,
+
+            "echecs": 0
+
+        }
+
+
+    return statistiques
+
+
+# ============================================================
+#                AJOUT DES NOUVEAUX SERVICES
+# ============================================================
+
+def ajouter_nouveaux_services(
+    services,
+    statistiques,
+    echecs_consecutifs,
+    panne_confirmee
+):
+    """
+    Recherche de nouveaux services.
+
+    Si un nouveau port apparaît pendant que le programme
+    fonctionne, il est automatiquement ajouté à la
+    supervision.
+    """
+
+    nouveaux_services = decouvrir_services()
+
+
+    ports_existants = {
+        service["port"]
+        for service in services
+    }
+
+
+    nombre_nouveaux = 0
+
+
+    for service in nouveaux_services:
+
+        port = service["port"]
+
+
+        # Le port est déjà surveillé.
+        if port in ports_existants:
+
+            continue
+
+
+        # ----------------------------------------------------
+        # Nouveau service
+        # ----------------------------------------------------
+
+        nom = service["nom"]
+
+
+        # Évite les conflits de noms.
+        if nom in statistiques:
+
+            nom = (
+                f"{nom} "
+                f"({port})"
+            )
+
+            service["nom"] = nom
+
+
+        services.append(
+            service
         )
 
-    else:
 
-        print(
-            "Alerte e-mail     : DÉSACTIVÉE"
+        statistiques[nom] = {
+
+            "port": port,
+
+            "total": 0,
+
+            "succes": 0,
+
+            "echecs": 0
+
+        }
+
+
+        echecs_consecutifs[nom] = 0
+
+        panne_confirmee[nom] = False
+
+
+        ports_existants.add(
+            port
         )
 
-    print()
+
+        nombre_nouveaux += 1
+
+
+        logger.info(
+            "Nouveau service détecté : "
+            "%s:%s",
+            ADRESSE_LOCALE,
+            port
+        )
+
+
+    if nombre_nouveaux > 0:
+
+        print()
+
+        print(
+            f"{nombre_nouveaux} nouveau(x) "
+            "service(s) détecté(s)."
+        )
+
+
+    return services
 
 
 # ============================================================
@@ -856,121 +1515,200 @@ def main():
     global PROGRAMME_ACTIF
 
 
-    # --------------------------------------------------------
-    # Affichage configuration
-    # --------------------------------------------------------
+    # ========================================================
+    # CONFIGURATION
+    # ========================================================
 
-    afficher_configuration()
+    print()
+
+    print(
+        "=" * 80
+    )
+
+    print(
+        "     S4 - SUPERVISION AUTOMATIQUE DES SERVICES"
+    )
+
+    print(
+        "=" * 80
+    )
+
+    print()
 
 
-    # --------------------------------------------------------
-    # Vérification du nombre de services
-    # --------------------------------------------------------
+    print(
+        f"Système : "
+        f"{platform.system()}"
+    )
 
-    if len(SERVICES) < 3:
+
+    print(
+        f"Adresse surveillée : "
+        f"{ADRESSE_LOCALE}"
+    )
+
+
+    print(
+        f"Intervalle : "
+        f"{INTERVALLE_TEST} secondes"
+    )
+
+
+    print(
+        f"Seuil de panne : "
+        f"{SEUIL_ECHECS} échecs consécutifs"
+    )
+
+
+    print(
+        f"Timeout : "
+        f"{TIMEOUT} secondes"
+    )
+
+
+    print(
+        f"SLA cible : "
+        f"{SLA_CIBLE:.1f} %"
+    )
+
+
+    print()
+
+
+    # ========================================================
+    # DÉCOUVERTE INITIALE
+    # ========================================================
+
+    print(
+        "Recherche automatique des services..."
+    )
+
+
+    services = decouvrir_services()
+
+
+    afficher_services(
+        services
+    )
+
+
+    # ========================================================
+    # SI AUCUN SERVICE N'EST DÉTECTÉ
+    # ========================================================
+
+    if not services:
 
         print(
-            "ATTENTION : le cahier des charges demande "
-            "au moins 3 services."
+            "Aucun service TCP en écoute n'a été détecté."
         )
+
+
+        print(
+            "La supervision reste active et "
+            "recherchera régulièrement de nouveaux services."
+        )
+
 
         logger.warning(
-            "Moins de 3 services configurés."
+            "Aucun service détecté au démarrage."
         )
 
 
-    # --------------------------------------------------------
-    # Initialisation statistiques
-    # --------------------------------------------------------
+    # ========================================================
+    # STATISTIQUES
+    # ========================================================
 
-    statistiques = {}
-
-
-    for service in SERVICES:
-
-        nom = service["nom"]
-
-        statistiques[nom] = {
-            "total": 0,
-            "succes": 0,
-            "echecs": 0
-        }
+    statistiques = (
+        initialiser_statistiques(
+            services
+        )
+    )
 
 
-    # --------------------------------------------------------
-    # Compteur d'échecs consécutifs
-    # --------------------------------------------------------
+    # ========================================================
+    # COMPTEURS
+    # ========================================================
 
     echecs_consecutifs = {}
-
-
-    # --------------------------------------------------------
-    # État de panne
-    # --------------------------------------------------------
 
     panne_confirmee = {}
 
 
-    for service in SERVICES:
+    for service in services:
 
         nom = service["nom"]
+
 
         echecs_consecutifs[nom] = 0
 
         panne_confirmee[nom] = False
 
 
-    # --------------------------------------------------------
-    # Date de début
-    # --------------------------------------------------------
+    # ========================================================
+    # DATE DE DÉBUT
+    # ========================================================
 
     date_debut = datetime.now()
 
 
     logger.info(
-        "=" * 60
-    )
-
-    logger.info(
         "Démarrage de la supervision."
     )
 
-    logger.info(
-        "Intervalle : %s secondes",
-        INTERVALLE_TEST
-    )
 
-    logger.info(
-        "Seuil panne : %s échecs",
-        SEUIL_ECHECS
-    )
-
-
-    # --------------------------------------------------------
-    # Boucle principale
-    # --------------------------------------------------------
+    # ========================================================
+    # BOUCLE PRINCIPALE
+    # ========================================================
 
     while PROGRAMME_ACTIF:
 
         print()
-        print("-" * 75)
+
+        print(
+            "=" * 80
+        )
+
 
         print(
             "Cycle de supervision - "
-            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            + datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
         )
 
-        print("-" * 75)
+
+        print(
+            "=" * 80
+        )
 
 
-        # ----------------------------------------------------
-        # Test de chaque service
-        # ----------------------------------------------------
+        # ====================================================
+        # RECHERCHE DES NOUVEAUX SERVICES
+        # ====================================================
 
-        for service in SERVICES:
+        services = ajouter_nouveaux_services(
+
+            services,
+
+            statistiques,
+
+            echecs_consecutifs,
+
+            panne_confirmee
+
+        )
+
+
+        # ====================================================
+        # TEST DE CHAQUE SERVICE
+        # ====================================================
+
+        for service in services:
 
             nom = service["nom"]
+
             ip = service["ip"]
+
             port = service["port"]
 
 
@@ -979,25 +1717,28 @@ def main():
             # ------------------------------------------------
 
             disponible = tester_service(
+
                 ip,
+
                 port,
+
                 TIMEOUT
+
             )
 
 
             # =================================================
-            #                  SERVICE OK
+            # SERVICE DISPONIBLE
             # =================================================
 
             if disponible:
 
-                # Statistiques.
                 statistiques[nom]["total"] += 1
 
                 statistiques[nom]["succes"] += 1
 
 
-                # Sauvegarde de l'ancien compteur.
+                # Sauvegarde du nombre d'échecs.
                 ancien_nombre_echecs = (
                     echecs_consecutifs[nom]
                 )
@@ -1008,7 +1749,7 @@ def main():
 
 
                 # ------------------------------------------------
-                # Retour à la normale
+                # RETOUR À LA NORMALE
                 # ------------------------------------------------
 
                 if panne_confirmee[nom]:
@@ -1017,12 +1758,21 @@ def main():
 
 
                     message_incident = (
+
                         "RETOUR A LA NORMALE | "
+
                         f"{nom} | "
+
                         f"{ip}:{port} | "
+
                         "Service de nouveau disponible | "
-                        f"Retour : "
-                        f"{date_retour.strftime('%Y-%m-%d %H:%M:%S')}"
+
+                        "Retour : "
+
+                        + date_retour.strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
+
                     )
 
 
@@ -1036,41 +1786,27 @@ def main():
                     )
 
 
-                    # --------------------------------------------
-                    # E-mail de récupération
-                    # --------------------------------------------
+                    # ------------------------------------------------
+                    # E-MAIL DÉSACTIVÉ
+                    # ------------------------------------------------
 
-                    sujet = (
-                        f"[RECOVERY] {nom} "
-                        "est de nouveau disponible"
-                    )
-
-
-                    message = (
-                        "RETOUR À LA NORMALE\n\n"
-
-                        f"Service : {nom}\n"
-                        f"Adresse : {ip}\n"
-                        f"Port : {port}\n\n"
-
-                        "Le service est de nouveau "
-                        "disponible.\n\n"
-
-                        f"Heure du retour : "
-                        f"{date_retour.strftime('%Y-%m-%d %H:%M:%S')}\n"
-
-                        f"Nombre d'échecs précédents : "
-                        f"{ancien_nombre_echecs}\n"
-                    )
+                    # sujet = (
+                    #     f"[RECOVERY] {nom}"
+                    # )
+                    #
+                    # message = (
+                    #     "RETOUR À LA NORMALE\n\n"
+                    #     f"Service : {nom}\n"
+                    #     f"Adresse : {ip}\n"
+                    #     f"Port : {port}\n"
+                    # )
+                    #
+                    # envoyer_email(
+                    #     sujet,
+                    #     message
+                    # )
 
 
-                    envoyer_email(
-                        sujet,
-                        message
-                    )
-
-
-                    # Le service n'est plus en panne.
                     panne_confirmee[nom] = False
 
 
@@ -1085,18 +1821,17 @@ def main():
 
 
             # =================================================
-            #                SERVICE EN ERREUR
+            # SERVICE INDISPONIBLE
             # =================================================
 
             else:
 
-                # Statistiques.
                 statistiques[nom]["total"] += 1
 
                 statistiques[nom]["echecs"] += 1
 
 
-                # Incrémentation des échecs consécutifs.
+                # Incrémentation du compteur.
                 echecs_consecutifs[nom] += 1
 
 
@@ -1106,42 +1841,56 @@ def main():
 
 
                 logger.warning(
+
                     "ÉCHEC | %s | %s:%s | "
                     "échecs consécutifs = %s",
+
                     nom,
+
                     ip,
+
                     port,
+
                     nombre_echecs
+
                 )
 
 
-                # ------------------------------------------------
-                # Détection de la panne
-                # ------------------------------------------------
+                # =================================================
+                # PANNE CONFIRMÉE
+                # =================================================
 
                 if (
+
                     nombre_echecs >= SEUIL_ECHECS
+
                     and not panne_confirmee[nom]
+
                 ):
 
-                    # La panne est maintenant confirmée.
                     panne_confirmee[nom] = True
 
 
                     date_panne = datetime.now()
 
 
-                    # --------------------------------------------
-                    # Message incident
-                    # --------------------------------------------
-
                     message_incident = (
+
                         "PANNE CONFIRMEE | "
+
                         f"{nom} | "
+
                         f"{ip}:{port} | "
-                        f"{nombre_echecs} échecs consécutifs | "
+
+                        f"{nombre_echecs} "
+                        "échecs consécutifs | "
+
                         "Détection : "
-                        f"{date_panne.strftime('%Y-%m-%d %H:%M:%S')}"
+
+                        + date_panne.strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
+
                     )
 
 
@@ -1157,78 +1906,69 @@ def main():
                     )
 
 
-                    # --------------------------------------------
-                    # Alerte e-mail
-                    # --------------------------------------------
+                    # ------------------------------------------------
+                    # E-MAIL DÉSACTIVÉ
+                    # ------------------------------------------------
 
-                    sujet = (
-                        f"[ALERTE PANNE] {nom}"
-                    )
-
-
-                    message = (
-                        "ALERTE DE SUPERVISION\n\n"
-
-                        "Une panne a été détectée.\n\n"
-
-                        f"Service : {nom}\n"
-                        f"Adresse IP : {ip}\n"
-                        f"Port : {port}\n\n"
-
-                        f"Échecs consécutifs : "
-                        f"{nombre_echecs}\n"
-
-                        f"Heure de détection : "
-                        f"{date_panne.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-
-                        f"Le service est considéré "
-                        f"en panne après "
-                        f"{SEUIL_ECHECS} échecs consécutifs."
-                    )
-
-
-                    envoyer_email(
-                        sujet,
-                        message
-                    )
+                    # sujet = (
+                    #     f"[ALERTE PANNE] {nom}"
+                    # )
+                    #
+                    # message = (
+                    #     "ALERTE DE SUPERVISION\n\n"
+                    #     "Une panne a été détectée.\n\n"
+                    #     f"Service : {nom}\n"
+                    #     f"Adresse IP : {ip}\n"
+                    #     f"Port : {port}\n"
+                    #     f"Échecs : {nombre_echecs}\n"
+                    # )
+                    #
+                    # envoyer_email(
+                    #     sujet,
+                    #     message
+                    # )
 
 
             # ------------------------------------------------
-            # Affichage console
+            # Affichage du résultat.
             # ------------------------------------------------
 
             afficher_resultat(
+
                 service,
+
                 disponible,
+
                 echecs_consecutifs[nom]
+
             )
 
 
-        # ----------------------------------------------------
-        # Attente avant le prochain cycle
-        # ----------------------------------------------------
+        # ====================================================
+        # ATTENTE AVANT LE PROCHAIN CYCLE
+        # ====================================================
 
         if PROGRAMME_ACTIF:
 
             print()
 
             print(
+
                 f"Prochain test dans "
                 f"{INTERVALLE_TEST} secondes..."
+
             )
 
-
-            # Attente seconde par seconde.
-            #
-            # Cela permet d'arrêter rapidement
-            # le programme avec Ctrl+C.
 
             temps_ecoule = 0
 
 
             while (
+
                 temps_ecoule < INTERVALLE_TEST
+
                 and PROGRAMME_ACTIF
+
             ):
 
                 time.sleep(1)
@@ -1237,24 +1977,32 @@ def main():
 
 
     # ========================================================
-    #                      FIN DU PROGRAMME
+    # FIN DE LA SUPERVISION
     # ========================================================
 
     date_fin = datetime.now()
 
 
     print()
-    print("=" * 75)
+
+    print(
+        "=" * 80
+    )
+
 
     print(
         "Fin de la supervision."
     )
 
+
     print(
         "Génération du rapport SLA..."
     )
 
-    print("=" * 75)
+
+    print(
+        "=" * 80
+    )
 
 
     logger.info(
@@ -1262,20 +2010,24 @@ def main():
     )
 
 
-    # --------------------------------------------------------
-    # Génération du rapport
-    # --------------------------------------------------------
+    # ========================================================
+    # GÉNÉRATION DU RAPPORT
+    # ========================================================
 
     generer_rapport(
+
         statistiques,
+
         date_debut,
+
         date_fin
+
     )
 
 
-    # --------------------------------------------------------
-    # Affichage des fichiers
-    # --------------------------------------------------------
+    # ========================================================
+    # FICHIERS GÉNÉRÉS
+    # ========================================================
 
     print()
 
@@ -1283,26 +2035,39 @@ def main():
         "Fichiers générés :"
     )
 
+
     print()
 
     print(
-        f"  supervision.log :\n"
+        f"  supervision.log"
+    )
+
+    print(
         f"  {FICHIER_LOG}"
     )
 
+
     print()
 
     print(
-        f"  incidents.log :\n"
+        f"  incidents.log"
+    )
+
+    print(
         f"  {FICHIER_INCIDENTS}"
     )
 
+
     print()
 
     print(
-        f"  rapport_sla.txt :\n"
+        f"  rapport_sla.txt"
+    )
+
+    print(
         f"  {FICHIER_RAPPORT}"
     )
+
 
     print()
 
@@ -1312,7 +2077,7 @@ def main():
 
 
 # ============================================================
-#                     LANCEMENT DU SCRIPT
+#                     LANCEMENT
 # ============================================================
 
 if __name__ == "__main__":
@@ -1321,11 +2086,13 @@ if __name__ == "__main__":
 
         main()
 
+
     except KeyboardInterrupt:
 
         PROGRAMME_ACTIF = False
 
         print()
+
         print(
             "Arrêt demandé par l'utilisateur."
         )
@@ -1338,13 +2105,17 @@ if __name__ == "__main__":
             erreur
         )
 
+
         print()
+
         print(
             "ERREUR CRITIQUE :"
         )
 
+
         print(
             erreur
         )
+
 
         sys.exit(1)
