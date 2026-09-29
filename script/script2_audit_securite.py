@@ -3,55 +3,39 @@
 
 """
 ============================================================
-S2 - AUDIT DE CONFORMITÉ SÉCURITÉ DES SERVEURS
+AUDIT DE CONFORMITÉ SÉCURITÉ
 ============================================================
 
-Fichier :
-    script2_audit_securite.py
+Arborescence attendue :
 
-Structure attendue :
+mon_projet/
+│
+├── script/
+│   └── script2_audit_securite.py
+│
+├── base/
+│   └── rapport_conformite.html
+│
+├── logs/
+│
+└── rapports/
+    └── audi_securite/
 
-    projet/
-    ├── script2_audit_securite.py
-    │
-    ├── base/
-    │   └── rapport_conformite.html
-    │
-    ├── logs/
-    │
-    └── rapports/
-        └── audi_securite/
+Le script utilise automatiquement la racine du projet :
 
-Contrôles réalisés :
+    mon_projet/
 
-    1. SSH sur un port non standard
-    2. PermitRootLogin désactivé
-    3. Authentification SSH par clé publique
-    4. Firewall actif
-       - UFW
-       - nftables
-       - iptables
-    5. Mises à jour disponibles
-       - APT
-       - DNF
-    6. Journaux système présents
+Les fichiers sont générés dans :
 
-Fichiers générés :
+    Logs :
+        mon_projet/logs/
 
-    logs/
-        audit_securite_AAAA-MM-JJ_HH-MM-SS.log
+    Rapports :
+        mon_projet/rapports/audi_securite/
 
-    rapports/audi_securite/
-        audit_securite_AAAA-MM-JJ.txt
-        rapport_conformite.html
+Le template HTML est chargé depuis :
 
-Usage :
-
-    python3 script2_audit_securite.py
-
-ou :
-
-    sudo python3 script2_audit_securite.py
+    mon_projet/base/rapport_conformite.html
 
 ============================================================
 """
@@ -71,92 +55,172 @@ from pathlib import Path
 
 
 # ============================================================
-# CHEMINS
+# CHEMINS DU PROJET
 # ============================================================
 
-# Répertoire contenant le script
-SCRIPT_DIR = Path(
-    __file__
-).resolve().parent
+"""
+Le script se trouve ici :
 
-# Template HTML
-BASE_DIR = SCRIPT_DIR / "base"
+    mon_projet/script/script2_audit_securite.py
+
+Donc :
+
+    __file__
+        ↓
+    mon_projet/script/script2_audit_securite.py
+
+    .parent
+        ↓
+    mon_projet/script/
+
+    .parent.parent
+        ↓
+    mon_projet/
+
+PROJECT_DIR correspond donc toujours à la racine du projet.
+"""
+
+SCRIPT_FILE = (
+    Path(__file__)
+    .resolve()
+)
+
+SCRIPT_DIR = (
+    SCRIPT_FILE.parent
+)
+
+PROJECT_DIR = (
+    SCRIPT_DIR.parent
+)
+
+
+# ============================================================
+# DOSSIER BASE
+# ============================================================
+
+BASE_DIR = (
+    PROJECT_DIR /
+    "base"
+)
+
+
+# ============================================================
+# TEMPLATE HTML
+# ============================================================
 
 BASE_HTML = (
     BASE_DIR /
     "rapport_conformite.html"
 )
 
-# Répertoire des logs
-LOG_DIR = SCRIPT_DIR / "logs"
 
-# Répertoire des rapports
+# ============================================================
+# DOSSIER LOGS
+# ============================================================
+
+LOG_DIR = (
+    PROJECT_DIR /
+    "logs"
+)
+
+
+# ============================================================
+# DOSSIER RAPPORTS
+# ============================================================
+
 REPORT_DIR = (
-    SCRIPT_DIR /
+    PROJECT_DIR /
     "rapports" /
     "audi_securite"
 )
 
-# Configuration SSH
+
+# ============================================================
+# CONFIGURATION SSH
+# ============================================================
+
 SSH_CONFIG = Path(
     "/etc/ssh/sshd_config"
 )
 
 
 # ============================================================
-# CONFIGURATION
+# FICHIERS DE LOGS LINUX
 # ============================================================
 
-# Ports SSH considérés comme standards
-STANDARD_SSH_PORTS = {
-    22
-}
-
-# Fichiers de logs Linux possibles
 LOG_FILES = [
+
     "/var/log/auth.log",
+
     "/var/log/secure",
+
     "/var/log/syslog",
+
     "/var/log/messages",
+
 ]
 
 
 # ============================================================
-# LOGGING
+# PORTS SSH STANDARDS
+# ============================================================
+
+STANDARD_SSH_PORTS = {
+
+    22
+
+}
+
+
+# ============================================================
+# INITIALISATION DU LOGGING
 # ============================================================
 
 def setup_logging():
     """
-    Configure le système de logs.
+    Initialise le système de logs.
 
-    Un fichier différent est créé à chaque exécution :
+    Un nouveau fichier est créé à chaque exécution :
 
-        logs/audit_securite_AAAA-MM-JJ_HH-MM-SS.log
-
-    Les messages sont :
-        - écrits dans le fichier
-        - affichés dans le terminal
+        mon_projet/logs/
+            audit_securite_YYYY-MM-DD_HH-MM-SS.log
     """
 
+    # --------------------------------------------------------
     # Création du dossier logs
+    # --------------------------------------------------------
+
     LOG_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    # Timestamp de l'exécution
-    timestamp = datetime.now().strftime(
-        "%Y-%m-%d_%H-%M-%S"
+    # --------------------------------------------------------
+    # Date / heure
+    # --------------------------------------------------------
+
+    timestamp = (
+        datetime.now()
+        .strftime(
+            "%Y-%m-%d_%H-%M-%S"
+        )
     )
 
-    # Nom du fichier
+    # --------------------------------------------------------
+    # Fichier log
+    # --------------------------------------------------------
+
     log_file = (
         LOG_DIR /
         f"audit_securite_{timestamp}.log"
     )
 
-    # Configuration du logging
+    # --------------------------------------------------------
+    # Configuration logging
+    # --------------------------------------------------------
+
     logging.basicConfig(
+
         level=logging.INFO,
 
         format=(
@@ -166,6 +230,7 @@ def setup_logging():
         ),
 
         handlers=[
+
             logging.FileHandler(
                 log_file,
                 encoding="utf-8"
@@ -174,7 +239,9 @@ def setup_logging():
             logging.StreamHandler(
                 sys.stdout
             )
+
         ]
+
     )
 
     logging.info(
@@ -182,11 +249,41 @@ def setup_logging():
     )
 
     logging.info(
-        "DÉMARRAGE DE L'AUDIT DE CONFORMITÉ SÉCURITÉ"
+        "DÉMARRAGE DE L'AUDIT DE SÉCURITÉ"
     )
 
     logging.info(
         "=" * 70
+    )
+
+    logging.info(
+        "Fichier Python : %s",
+        SCRIPT_FILE
+    )
+
+    logging.info(
+        "Répertoire script : %s",
+        SCRIPT_DIR
+    )
+
+    logging.info(
+        "Racine projet : %s",
+        PROJECT_DIR
+    )
+
+    logging.info(
+        "Template HTML : %s",
+        BASE_HTML
+    )
+
+    logging.info(
+        "Répertoire logs : %s",
+        LOG_DIR
+    )
+
+    logging.info(
+        "Répertoire rapports : %s",
+        REPORT_DIR
     )
 
     logging.info(
@@ -198,32 +295,42 @@ def setup_logging():
 
 
 # ============================================================
-# EXÉCUTION DES COMMANDES
+# EXÉCUTION D'UNE COMMANDE
 # ============================================================
 
-def run_command(command, timeout=15):
+def run_command(
+    command,
+    timeout=15
+):
     """
     Exécute une commande système.
 
-    Retour :
+    Retourne :
+
         code retour
         stdout
         stderr
     """
 
     logging.debug(
-        "Exécution commande : %s",
+        "Commande : %s",
         command
     )
 
     try:
 
         result = subprocess.run(
+
             command,
+
             shell=True,
+
             capture_output=True,
+
             text=True,
+
             timeout=timeout
+
         )
 
         return (
@@ -248,7 +355,7 @@ def run_command(command, timeout=15):
     except Exception as exc:
 
         logging.exception(
-            "Erreur commande : %s",
+            "Erreur lors de l'exécution : %s",
             command
         )
 
@@ -259,9 +366,15 @@ def run_command(command, timeout=15):
         )
 
 
-def command_exists(command):
+# ============================================================
+# VÉRIFICATION D'UNE COMMANDE
+# ============================================================
+
+def command_exists(
+    command
+):
     """
-    Vérifie qu'une commande existe.
+    Vérifie si une commande existe.
     """
 
     code, _, _ = run_command(
@@ -272,35 +385,27 @@ def command_exists(command):
 
 
 # ============================================================
-# STATUTS
+# COULEUR DU STATUT
 # ============================================================
 
-def status_text(status):
-    """
-    Convertit un statut interne en texte lisible.
-    """
-
-    statuses = {
-        "OK": "OK",
-        "WARNING": "AVERTISSEMENT",
-        "KO": "NON CONFORME"
-    }
-
-    return statuses.get(
-        status,
-        status
-    )
-
-
-def status_color(status):
+def status_color(
+    status
+):
     """
     Retourne la couleur associée au statut.
     """
 
     colors = {
-        "OK": "#198754",
-        "WARNING": "#f0ad00",
-        "KO": "#dc3545"
+
+        "OK":
+            "#198754",
+
+        "WARNING":
+            "#f0ad00",
+
+        "KO":
+            "#dc3545"
+
     }
 
     return colors.get(
@@ -310,13 +415,42 @@ def status_color(status):
 
 
 # ============================================================
+# TEXTE DU STATUT
+# ============================================================
+
+def status_text(
+    status
+):
+    """
+    Convertit un statut interne en texte.
+    """
+
+    statuses = {
+
+        "OK":
+            "OK",
+
+        "WARNING":
+            "AVERTISSEMENT",
+
+        "KO":
+            "NON CONFORME"
+
+    }
+
+    return statuses.get(
+        status,
+        status
+    )
+
+
+# ============================================================
 # INFORMATIONS SYSTÈME
 # ============================================================
 
 def get_system_info():
     """
-    Récupère les informations générales
-    du serveur.
+    Récupère les informations du serveur.
     """
 
     logging.info(
@@ -327,26 +461,37 @@ def get_system_info():
     # Hostname
     # --------------------------------------------------------
 
-    hostname = socket.gethostname()
+    hostname = (
+        socket.gethostname()
+    )
 
     # --------------------------------------------------------
     # OS
     # --------------------------------------------------------
 
     code, os_info, _ = run_command(
-        "grep '^PRETTY_NAME=' /etc/os-release "
+
+        "grep '^PRETTY_NAME=' "
+        "/etc/os-release "
         "| cut -d= -f2-"
+
     )
 
-    if code == 0 and os_info:
+    if (
+        code == 0
+        and os_info
+    ):
 
-        os_info = os_info.strip(
-            '"'
+        os_info = (
+            os_info
+            .strip('"')
         )
 
     else:
 
-        os_info = "Linux"
+        os_info = (
+            "Linux"
+        )
 
     # --------------------------------------------------------
     # Kernel
@@ -358,12 +503,21 @@ def get_system_info():
 
     if not kernel:
 
-        kernel = "Inconnu"
+        kernel = (
+            "Inconnu"
+        )
 
     return {
-        "hostname": hostname,
-        "os": os_info,
-        "kernel": kernel
+
+        "hostname":
+            hostname,
+
+        "os":
+            os_info,
+
+        "kernel":
+            kernel
+
     }
 
 
@@ -373,21 +527,26 @@ def get_system_info():
 
 def get_sshd_effective_config():
     """
-    Récupère la configuration SSH effective
-    avec sshd -T.
+    Récupère la configuration SSH effective.
 
-    Cela permet de tenir compte de certaines
-    directives Include.
+    Utilise :
+
+        sshd -T
+
+    afin de tenir compte notamment
+    des fichiers Include.
     """
 
     logging.info(
         "Lecture de la configuration SSH effective"
     )
 
-    if not command_exists("sshd"):
+    if not command_exists(
+        "sshd"
+    ):
 
         logging.warning(
-            "Commande sshd introuvable"
+            "La commande sshd est introuvable"
         )
 
         return None
@@ -415,6 +574,7 @@ def get_sshd_effective_config():
         )
 
         if len(parts) != 2:
+
             continue
 
         key, value = parts
@@ -427,24 +587,22 @@ def get_sshd_effective_config():
 
 
 # ============================================================
-# CONTRÔLE 1 - PORT SSH
+# CONTRÔLE SSH - PORT
 # ============================================================
 
 def check_ssh_port():
     """
-    Vérifie que SSH utilise un port différent
-    du port standard 22.
+    Vérifie que SSH utilise un port
+    différent du port standard 22.
     """
 
     logging.info(
-        "Contrôle 1 : port SSH non standard"
+        "Contrôle : port SSH"
     )
 
-    # --------------------------------------------------------
-    # Configuration effective
-    # --------------------------------------------------------
-
-    config = get_sshd_effective_config()
+    config = (
+        get_sshd_effective_config()
+    )
 
     if config:
 
@@ -461,13 +619,16 @@ def check_ssh_port():
                 )
 
                 logging.info(
-                    "Port SSH détecté : %d",
+                    "Port SSH : %d",
                     port
                 )
 
-                if port not in STANDARD_SSH_PORTS:
+                if port not in (
+                    STANDARD_SSH_PORTS
+                ):
 
                     return {
+
                         "name":
                             "SSH - Port non standard",
 
@@ -476,9 +637,11 @@ def check_ssh_port():
 
                         "details":
                             f"Port SSH configuré : {port}"
+
                     }
 
                 return {
+
                     "name":
                         "SSH - Port non standard",
 
@@ -487,12 +650,13 @@ def check_ssh_port():
 
                     "details":
                         f"SSH utilise le port standard {port}"
+
                 }
 
             except ValueError:
 
                 logging.warning(
-                    "Valeur du port SSH invalide : %s",
+                    "Port SSH invalide : %s",
                     port_value
                 )
 
@@ -502,8 +666,10 @@ def check_ssh_port():
 
     try:
 
-        content = SSH_CONFIG.read_text(
-            encoding="utf-8"
+        content = (
+            SSH_CONFIG.read_text(
+                encoding="utf-8"
+            )
         )
 
         ports = []
@@ -522,7 +688,9 @@ def check_ssh_port():
 
             if (
                 len(parts) >= 2
-                and parts[0].lower() == "port"
+                and
+                parts[0].lower()
+                == "port"
             ):
 
                 try:
@@ -539,14 +707,12 @@ def check_ssh_port():
 
             port = ports[0]
 
-            logging.info(
-                "Port SSH détecté dans sshd_config : %d",
-                port
-            )
-
-            if port not in STANDARD_SSH_PORTS:
+            if port not in (
+                STANDARD_SSH_PORTS
+            ):
 
                 return {
+
                     "name":
                         "SSH - Port non standard",
 
@@ -555,9 +721,11 @@ def check_ssh_port():
 
                     "details":
                         f"Port SSH configuré : {port}"
+
                 }
 
             return {
+
                 "name":
                     "SSH - Port non standard",
 
@@ -566,6 +734,7 @@ def check_ssh_port():
 
                 "details":
                     f"SSH utilise le port standard {port}"
+
             }
 
     except FileNotFoundError:
@@ -583,6 +752,7 @@ def check_ssh_port():
         )
 
     return {
+
         "name":
             "SSH - Port non standard",
 
@@ -591,31 +761,36 @@ def check_ssh_port():
 
         "details":
             "Impossible de déterminer le port SSH"
+
     }
 
 
 # ============================================================
-# CONTRÔLE 2 - ROOT LOGIN
+# CONTRÔLE SSH - ROOT
 # ============================================================
 
 def check_ssh_root_login():
     """
-    Vérifie que PermitRootLogin est configuré
-    sur 'no'.
+    Vérifie PermitRootLogin.
     """
 
     logging.info(
-        "Contrôle 2 : PermitRootLogin"
+        "Contrôle : PermitRootLogin"
     )
 
-    config = get_sshd_effective_config()
+    config = (
+        get_sshd_effective_config()
+    )
 
     if config:
 
-        value = config.get(
-            "permitrootlogin",
-            ""
-        ).lower()
+        value = (
+            config.get(
+                "permitrootlogin",
+                ""
+            )
+            .lower()
+        )
 
         logging.info(
             "PermitRootLogin = %s",
@@ -625,6 +800,7 @@ def check_ssh_root_login():
         if value == "no":
 
             return {
+
                 "name":
                     "SSH - PermitRootLogin",
 
@@ -633,9 +809,11 @@ def check_ssh_root_login():
 
                 "details":
                     "Connexion SSH directe de root désactivée"
+
             }
 
         return {
+
             "name":
                 "SSH - PermitRootLogin",
 
@@ -649,81 +827,11 @@ def check_ssh_root_login():
                     if value
                     else "non défini"
                 )
+
         }
 
-    # --------------------------------------------------------
-    # Fallback
-    # --------------------------------------------------------
-
-    try:
-
-        content = SSH_CONFIG.read_text(
-            encoding="utf-8"
-        )
-
-        for line in content.splitlines():
-
-            line = line.strip()
-
-            if not line:
-                continue
-
-            if line.startswith("#"):
-                continue
-
-            parts = line.split(
-                None,
-                1
-            )
-
-            if (
-                len(parts) == 2
-                and parts[0].lower()
-                == "permitrootlogin"
-            ):
-
-                value = (
-                    parts[1]
-                    .strip()
-                    .lower()
-                )
-
-                if value == "no":
-
-                    return {
-                        "name":
-                            "SSH - PermitRootLogin",
-
-                        "status":
-                            "OK",
-
-                        "details":
-                            "Connexion SSH directe "
-                            "de root désactivée"
-                    }
-
-                return {
-                    "name":
-                        "SSH - PermitRootLogin",
-
-                    "status":
-                        "KO",
-
-                    "details":
-                        f"PermitRootLogin = {value}"
-                }
-
-    except FileNotFoundError:
-
-        pass
-
-    except PermissionError:
-
-        logging.warning(
-            "Permission refusée pour sshd_config"
-        )
-
     return {
+
         "name":
             "SSH - PermitRootLogin",
 
@@ -731,32 +839,38 @@ def check_ssh_root_login():
             "WARNING",
 
         "details":
-            "Configuration SSH introuvable"
+            "Configuration SSH effective indisponible"
+
     }
 
 
 # ============================================================
-# CONTRÔLE 3 - CLÉ PUBLIQUE
+# CONTRÔLE SSH - CLÉ PUBLIQUE
 # ============================================================
 
 def check_ssh_public_key():
     """
-    Vérifie que l'authentification SSH
-    par clé publique est activée.
+    Vérifie PubkeyAuthentication.
     """
 
     logging.info(
-        "Contrôle 3 : authentification par clé publique"
+        "Contrôle : authentification "
+        "par clé publique"
     )
 
-    config = get_sshd_effective_config()
+    config = (
+        get_sshd_effective_config()
+    )
 
     if config:
 
-        value = config.get(
-            "pubkeyauthentication",
-            ""
-        ).lower()
+        value = (
+            config.get(
+                "pubkeyauthentication",
+                ""
+            )
+            .lower()
+        )
 
         logging.info(
             "PubkeyAuthentication = %s",
@@ -766,6 +880,7 @@ def check_ssh_public_key():
         if value == "yes":
 
             return {
+
                 "name":
                     "SSH - Authentification par clé publique",
 
@@ -774,9 +889,11 @@ def check_ssh_public_key():
 
                 "details":
                     "PubkeyAuthentication activé"
+
             }
 
         return {
+
             "name":
                 "SSH - Authentification par clé publique",
 
@@ -790,82 +907,11 @@ def check_ssh_public_key():
                     if value
                     else "non défini"
                 )
+
         }
 
-    # --------------------------------------------------------
-    # Fallback
-    # --------------------------------------------------------
-
-    try:
-
-        content = SSH_CONFIG.read_text(
-            encoding="utf-8"
-        )
-
-        for line in content.splitlines():
-
-            line = line.strip()
-
-            if not line:
-                continue
-
-            if line.startswith("#"):
-                continue
-
-            parts = line.split(
-                None,
-                1
-            )
-
-            if (
-                len(parts) == 2
-                and parts[0].lower()
-                == "pubkeyauthentication"
-            ):
-
-                value = (
-                    parts[1]
-                    .strip()
-                    .lower()
-                )
-
-                if value == "yes":
-
-                    return {
-                        "name":
-                            "SSH - Authentification "
-                            "par clé publique",
-
-                        "status":
-                            "OK",
-
-                        "details":
-                            "PubkeyAuthentication activé"
-                    }
-
-                return {
-                    "name":
-                        "SSH - Authentification "
-                        "par clé publique",
-
-                    "status":
-                        "KO",
-
-                    "details":
-                        f"PubkeyAuthentication = {value}"
-                }
-
-    except FileNotFoundError:
-
-        pass
-
-    except PermissionError:
-
-        logging.warning(
-            "Permission refusée pour sshd_config"
-        )
-
     return {
+
         "name":
             "SSH - Authentification par clé publique",
 
@@ -873,34 +919,37 @@ def check_ssh_public_key():
             "WARNING",
 
         "details":
-            "Configuration SSH introuvable"
+            "Configuration SSH effective indisponible"
+
     }
 
 
 # ============================================================
-# CONTRÔLE 4 - FIREWALL
+# CONTRÔLE FIREWALL
 # ============================================================
 
 def check_firewall():
     """
-    Vérifie si un firewall actif est présent.
+    Vérifie si un firewall actif est détecté.
 
-    Ordre de vérification :
+    Vérification :
 
-        UFW
-        nftables
-        iptables
+        1. UFW
+        2. nftables
+        3. iptables
     """
 
     logging.info(
-        "Contrôle 4 : firewall"
+        "Contrôle : firewall"
     )
 
     # --------------------------------------------------------
     # UFW
     # --------------------------------------------------------
 
-    if command_exists("ufw"):
+    if command_exists(
+        "ufw"
+    ):
 
         logging.info(
             "UFW détecté"
@@ -913,6 +962,7 @@ def check_firewall():
         if "Status: active" in stdout:
 
             return {
+
                 "name":
                     "Firewall",
 
@@ -921,17 +971,16 @@ def check_firewall():
 
                 "details":
                     "UFW est actif"
+
             }
 
-        logging.info(
-            "UFW n'est pas actif"
-        )
-
     # --------------------------------------------------------
-    # nftables
+    # NFTABLES
     # --------------------------------------------------------
 
-    if command_exists("nft"):
+    if command_exists(
+        "nft"
+    ):
 
         logging.info(
             "nftables détecté"
@@ -947,6 +996,7 @@ def check_firewall():
         ):
 
             return {
+
                 "name":
                     "Firewall",
 
@@ -954,18 +1004,17 @@ def check_firewall():
                     "OK",
 
                 "details":
-                    "nftables contient des règles actives"
+                    "nftables contient des règles"
+
             }
 
-        logging.info(
-            "Aucune règle nftables détectée"
-        )
-
     # --------------------------------------------------------
-    # iptables
+    # IPTABLES
     # --------------------------------------------------------
 
-    if command_exists("iptables"):
+    if command_exists(
+        "iptables"
+    ):
 
         logging.info(
             "iptables détecté"
@@ -977,7 +1026,9 @@ def check_firewall():
 
         if code == 0:
 
-            lines = stdout.splitlines()
+            lines = (
+                stdout.splitlines()
+            )
 
             rules = []
 
@@ -986,17 +1037,24 @@ def check_firewall():
                 if not line.strip():
                     continue
 
-                if line.startswith("Chain"):
+                if line.startswith(
+                    "Chain"
+                ):
                     continue
 
-                if line.startswith("target"):
+                if line.startswith(
+                    "target"
+                ):
                     continue
 
-                rules.append(line)
+                rules.append(
+                    line
+                )
 
             if rules:
 
                 return {
+
                     "name":
                         "Firewall",
 
@@ -1005,13 +1063,11 @@ def check_firewall():
 
                     "details":
                         "iptables contient des règles"
+
                 }
 
-        logging.info(
-            "Aucune règle iptables exploitable détectée"
-        )
-
     return {
+
         "name":
             "Firewall",
 
@@ -1020,43 +1076,46 @@ def check_firewall():
 
         "details":
             "Aucun firewall actif détecté"
+
     }
 
 
 # ============================================================
-# CONTRÔLE 5 - MISES À JOUR
+# CONTRÔLE MISES À JOUR
 # ============================================================
 
 def check_security_updates():
     """
-    Vérifie si des mises à jour sont disponibles.
+    Vérifie les mises à jour disponibles.
 
-    Support :
+    Supporte :
 
-        Debian / Ubuntu
-            apt
-
-        RHEL / Fedora / CentOS
-            dnf
+        APT
+        DNF
     """
 
     logging.info(
-        "Contrôle 5 : mises à jour"
+        "Contrôle : mises à jour"
     )
 
     # --------------------------------------------------------
     # APT
     # --------------------------------------------------------
 
-    if command_exists("apt"):
+    if command_exists(
+        "apt"
+    ):
 
         logging.info(
-            "Gestionnaire APT détecté"
+            "APT détecté"
         )
 
         code, stdout, stderr = run_command(
+
             "apt list --upgradable 2>/dev/null",
+
             timeout=30
+
         )
 
         if code == 0:
@@ -1085,6 +1144,7 @@ def check_security_updates():
                 )
 
                 return {
+
                     "name":
                         "Mises à jour de sécurité",
 
@@ -1094,13 +1154,11 @@ def check_security_updates():
                     "details":
                         f"{len(updates)} paquet(s) "
                         "pouvant être mis à jour"
+
                 }
 
-            logging.info(
-                "Aucune mise à jour détectée"
-            )
-
             return {
+
                 "name":
                     "Mises à jour de sécurité",
 
@@ -1109,13 +1167,11 @@ def check_security_updates():
 
                 "details":
                     "Aucune mise à jour disponible détectée"
+
             }
 
-        logging.warning(
-            "Impossible d'interroger APT"
-        )
-
         return {
+
             "name":
                 "Mises à jour de sécurité",
 
@@ -1123,34 +1179,34 @@ def check_security_updates():
                 "WARNING",
 
             "details":
-                "Impossible de déterminer "
-                "les mises à jour APT"
+                "Impossible d'interroger APT"
+
         }
 
     # --------------------------------------------------------
     # DNF
     # --------------------------------------------------------
 
-    if command_exists("dnf"):
+    if command_exists(
+        "dnf"
+    ):
 
         logging.info(
-            "Gestionnaire DNF détecté"
+            "DNF détecté"
         )
 
         code, stdout, stderr = run_command(
+
             "dnf check-update",
+
             timeout=30
+
         )
 
-        # DNF retourne 100 lorsqu'il existe
-        # des mises à jour disponibles
         if code == 100:
 
-            logging.warning(
-                "Des mises à jour sont disponibles"
-            )
-
             return {
+
                 "name":
                     "Mises à jour de sécurité",
 
@@ -1159,15 +1215,13 @@ def check_security_updates():
 
                 "details":
                     "Des mises à jour sont disponibles"
+
             }
 
         if code == 0:
 
-            logging.info(
-                "Aucune mise à jour détectée"
-            )
-
             return {
+
                 "name":
                     "Mises à jour de sécurité",
 
@@ -1176,13 +1230,11 @@ def check_security_updates():
 
                 "details":
                     "Aucune mise à jour disponible détectée"
+
             }
 
-        logging.warning(
-            "Impossible d'interroger DNF"
-        )
-
         return {
+
             "name":
                 "Mises à jour de sécurité",
 
@@ -1190,19 +1242,12 @@ def check_security_updates():
                 "WARNING",
 
             "details":
-                "Impossible de déterminer "
-                "les mises à jour DNF"
+                "Impossible d'interroger DNF"
+
         }
 
-    # --------------------------------------------------------
-    # Gestionnaire inconnu
-    # --------------------------------------------------------
-
-    logging.warning(
-        "Aucun gestionnaire de paquets reconnu"
-    )
-
     return {
+
         "name":
             "Mises à jour de sécurité",
 
@@ -1211,29 +1256,21 @@ def check_security_updates():
 
         "details":
             "Gestionnaire de paquets non reconnu"
+
     }
 
 
 # ============================================================
-# CONTRÔLE 6 - JOURNAUX
+# CONTRÔLE JOURNAUX
 # ============================================================
 
 def check_logs():
     """
-    Vérifie la présence de journaux système.
-
-    Vérifie :
-
-        /var/log/auth.log
-        /var/log/secure
-        /var/log/syslog
-        /var/log/messages
-
-    ainsi que journald.
+    Vérifie les journaux système.
     """
 
     logging.info(
-        "Contrôle 6 : journaux système"
+        "Contrôle : journaux système"
     )
 
     existing_logs = []
@@ -1252,15 +1289,11 @@ def check_logs():
 
             if (
                 path.exists()
-                and path.stat().st_size > 0
+                and
+                path.stat().st_size > 0
             ):
 
                 existing_logs.append(
-                    log_file
-                )
-
-                logging.info(
-                    "Journal détecté : %s",
                     log_file
                 )
 
@@ -1272,7 +1305,7 @@ def check_logs():
             )
 
     # --------------------------------------------------------
-    # journald
+    # Journald
     # --------------------------------------------------------
 
     journald_active = False
@@ -1282,19 +1315,21 @@ def check_logs():
     ):
 
         code, stdout, stderr = run_command(
-            "journalctl --no-pager -n 5 2>/dev/null"
+
+            "journalctl "
+            "--no-pager "
+            "-n 5 "
+            "2>/dev/null"
+
         )
 
         if (
             code == 0
-            and stdout.strip()
+            and
+            stdout.strip()
         ):
 
             journald_active = True
-
-            logging.info(
-                "journald actif"
-            )
 
     # --------------------------------------------------------
     # Résultat
@@ -1311,7 +1346,9 @@ def check_logs():
 
             details.append(
                 "logs actifs : "
-                + ", ".join(existing_logs)
+                + ", ".join(
+                    existing_logs
+                )
             )
 
         if journald_active:
@@ -1321,6 +1358,7 @@ def check_logs():
             )
 
         return {
+
             "name":
                 "Journaux système",
 
@@ -1328,10 +1366,14 @@ def check_logs():
                 "OK",
 
             "details":
-                " ; ".join(details)
+                " ; ".join(
+                    details
+                )
+
         }
 
     return {
+
         "name":
             "Journaux système",
 
@@ -1340,16 +1382,17 @@ def check_logs():
 
         "details":
             "Aucun journal système exploitable détecté"
+
     }
 
 
 # ============================================================
-# AUDIT COMPLET
+# EXÉCUTION DE L'AUDIT
 # ============================================================
 
 def run_audit():
     """
-    Exécute tous les contrôles de sécurité.
+    Exécute tous les contrôles.
     """
 
     logging.info(
@@ -1367,22 +1410,25 @@ def run_audit():
     results = []
 
     checks = [
+
         check_ssh_port,
+
         check_ssh_root_login,
+
         check_ssh_public_key,
+
         check_firewall,
+
         check_security_updates,
+
         check_logs,
+
     ]
 
     for check in checks:
 
         logging.info(
-            "--------------------------------------------------"
-        )
-
-        logging.info(
-            "Exécution : %s",
+            "Contrôle : %s",
             check.__name__
         )
 
@@ -1400,11 +1446,6 @@ def run_audit():
             )
 
             logging.info(
-                "Critère : %s",
-                result["name"]
-            )
-
-            logging.info(
                 "Détail : %s",
                 result["details"]
             )
@@ -1412,11 +1453,12 @@ def run_audit():
         except Exception as exc:
 
             logging.exception(
-                "Erreur pendant le contrôle : %s",
+                "Erreur pendant %s",
                 check.__name__
             )
 
-            result = {
+            results.append({
+
                 "name":
                     check.__name__,
 
@@ -1424,12 +1466,9 @@ def run_audit():
                     "WARNING",
 
                 "details":
-                    f"Erreur pendant le contrôle : {exc}"
-            }
+                    f"Erreur : {exc}"
 
-            results.append(
-                result
-            )
+            })
 
     logging.info(
         "=" * 70
@@ -1450,18 +1489,15 @@ def run_audit():
 # CALCUL DU SCORE
 # ============================================================
 
-def calculate_score(results):
+def calculate_score(
+    results
+):
     """
-    Calcule un score indicatif.
+    Calcule un score indicatif :
 
-    OK :
-        100 points
-
-    AVERTISSEMENT :
-        50 points
-
-    KO :
-        0 point
+        OK          = 100
+        WARNING     = 50
+        KO          = 0
     """
 
     if not results:
@@ -1472,9 +1508,9 @@ def calculate_score(results):
 
     for result in results:
 
-        status = result[
-            "status"
-        ]
+        status = (
+            result["status"]
+        )
 
         if status == "OK":
 
@@ -1489,12 +1525,13 @@ def calculate_score(results):
             total += 0
 
     return round(
-        total / len(results)
+        total /
+        len(results)
     )
 
 
 # ============================================================
-# RAPPORT TEXTE
+# GÉNÉRATION DU RAPPORT TXT
 # ============================================================
 
 def generate_text_report(
@@ -1508,31 +1545,41 @@ def generate_text_report(
     """
 
     logging.info(
-        "Génération du rapport texte"
+        "Génération du rapport TXT"
     )
-
-    now = datetime.now()
 
     # --------------------------------------------------------
     # Statistiques
     # --------------------------------------------------------
 
     ok_count = sum(
+
         1
+
         for result in results
+
         if result["status"] == "OK"
+
     )
 
     warning_count = sum(
+
         1
+
         for result in results
+
         if result["status"] == "WARNING"
+
     )
 
     ko_count = sum(
+
         1
+
         for result in results
+
         if result["status"] == "KO"
+
     )
 
     # --------------------------------------------------------
@@ -1556,7 +1603,7 @@ def generate_text_report(
         global_status = "OK"
 
     # --------------------------------------------------------
-    # Construction du rapport
+    # Rapport
     # --------------------------------------------------------
 
     lines = []
@@ -1566,7 +1613,7 @@ def generate_text_report(
     )
 
     lines.append(
-        "AUDIT DE CONFORMITÉ SÉCURITÉ - SERVEUR LINUX"
+        "AUDIT DE CONFORMITÉ SÉCURITÉ"
     )
 
     lines.append(
@@ -1577,7 +1624,7 @@ def generate_text_report(
 
     lines.append(
         "Date       : "
-        + now.strftime(
+        + datetime.now().strftime(
             "%Y-%m-%d %H:%M:%S"
         )
     )
@@ -1681,8 +1728,7 @@ def generate_text_report(
     )
 
     lines.append(
-        "Rapport généré automatiquement par "
-        "script2_audit_securite.py"
+        "Rapport généré automatiquement"
     )
 
     lines.append(
@@ -1699,13 +1745,13 @@ def generate_text_report(
     )
 
     logging.info(
-        "Rapport texte créé : %s",
+        "Rapport TXT créé : %s",
         output_file
     )
 
 
 # ============================================================
-# RAPPORT HTML À PARTIR DU TEMPLATE
+# GÉNÉRATION DU RAPPORT HTML
 # ============================================================
 
 def generate_html_report(
@@ -1717,81 +1763,124 @@ def generate_html_report(
     """
     Génère le rapport HTML à partir du template :
 
-        base/rapport_conformite.html
+        mon_projet/base/rapport_conformite.html
 
-    Le template contient des variables :
+    Le fichier HTML de base n'est PAS recréé par Python.
 
-        {{TITLE}}
-        {{SUBTITLE}}
-        {{HOSTNAME}}
-        {{OS}}
-        {{KERNEL}}
-        {{DATE}}
-        {{GLOBAL_COLOR}}
-        {{GLOBAL_STATUS}}
-        {{SCORE}}
-        {{OK_COUNT}}
-        {{WARNING_COUNT}}
-        {{KO_COUNT}}
-        {{RESULTS_ROWS}}
+    Le script lit le fichier existant, remplace les
+    variables et crée le rapport final dans :
+
+        mon_projet/rapports/audi_securite/
     """
 
     logging.info(
-        "Chargement du template HTML : %s",
+        "Génération du rapport HTML"
+    )
+
+    logging.info(
+        "Recherche du template : %s",
         BASE_HTML
     )
 
-    # --------------------------------------------------------
-    # Vérification du template
-    # --------------------------------------------------------
+    # ========================================================
+    # VÉRIFICATION DU TEMPLATE
+    # ========================================================
+
+    if not BASE_DIR.exists():
+
+        raise FileNotFoundError(
+
+            "Le dossier base est introuvable : "
+            f"{BASE_DIR}"
+
+        )
 
     if not BASE_HTML.exists():
 
         raise FileNotFoundError(
-            "Template HTML introuvable : "
+
+            "Le fichier rapport_conformite.html "
+            "est introuvable : "
             f"{BASE_HTML}"
+
         )
 
     if not BASE_HTML.is_file():
 
         raise FileNotFoundError(
-            "Le template HTML n'est pas un fichier : "
-            f"{BASE_HTML}"
+
+            "rapport_conformite.html n'est pas "
+            f"un fichier : {BASE_HTML}"
+
         )
 
-    # --------------------------------------------------------
-    # Lecture du template
-    # --------------------------------------------------------
-
-    template = BASE_HTML.read_text(
-        encoding="utf-8"
+    logging.info(
+        "Template HTML trouvé : %s",
+        BASE_HTML
     )
 
-    # --------------------------------------------------------
-    # Statistiques
-    # --------------------------------------------------------
+    # ========================================================
+    # LECTURE DU TEMPLATE
+    # ========================================================
+
+    try:
+
+        template = (
+            BASE_HTML.read_text(
+                encoding="utf-8"
+            )
+        )
+
+    except Exception as exc:
+
+        logging.exception(
+            "Impossible de lire le template HTML"
+        )
+
+        raise RuntimeError(
+
+            "Impossible de lire "
+            f"{BASE_HTML} : {exc}"
+
+        ) from exc
+
+    # ========================================================
+    # STATISTIQUES
+    # ========================================================
 
     ok_count = sum(
+
         1
+
         for result in results
+
         if result["status"] == "OK"
+
     )
 
     warning_count = sum(
+
         1
+
         for result in results
+
         if result["status"] == "WARNING"
+
     )
 
     ko_count = sum(
+
         1
+
         for result in results
+
         if result["status"] == "KO"
+
     )
 
-    # --------------------------------------------------------
-    # État global
-    # --------------------------------------------------------
+    # ========================================================
+    # ÉTAT GLOBAL
+    # ========================================================
 
     if ko_count > 0:
 
@@ -1815,15 +1904,17 @@ def generate_html_report(
 
     else:
 
-        global_status = "OK"
+        global_status = (
+            "OK"
+        )
 
         global_color = (
             "#198754"
         )
 
-    # --------------------------------------------------------
-    # Lignes du tableau HTML
-    # --------------------------------------------------------
+    # ========================================================
+    # LIGNES DU TABLEAU
+    # ========================================================
 
     rows = []
 
@@ -1841,51 +1932,51 @@ def generate_html_report(
         )
 
         row = f"""
-        <tr>
+<tr>
 
-            <td>
-                {index}
-            </td>
+    <td>
+        {index}
+    </td>
 
-            <td>
-                {html.escape(
-                    result["name"]
-                )}
-            </td>
+    <td>
+        {html.escape(
+            str(result["name"])
+        )}
+    </td>
 
-            <td>
+    <td>
 
-                <span
-                    class="badge"
-                    style="background-color:{color}"
-                >
-                    {html.escape(
-                        status
-                    )}
-                </span>
+        <span
+            class="badge"
+            style="background-color:{color}"
+        >
+            {html.escape(
+                str(status)
+            )}
+        </span>
 
-            </td>
+    </td>
 
-            <td>
-                {html.escape(
-                    result["details"]
-                )}
-            </td>
+    <td>
+        {html.escape(
+            str(result["details"])
+        )}
+    </td>
 
-        </tr>
-        """
+</tr>
+"""
 
         rows.append(
             row
         )
 
-    results_rows = "\n".join(
-        rows
+    results_rows = (
+        "\n".join(rows)
     )
 
-    # --------------------------------------------------------
-    # Variables du template
-    # --------------------------------------------------------
+    # ========================================================
+    # VARIABLES DU TEMPLATE
+    # ========================================================
 
     variables = {
 
@@ -1898,17 +1989,23 @@ def generate_html_report(
 
         "{{HOSTNAME}}":
             html.escape(
-                system_info["hostname"]
+                str(
+                    system_info["hostname"]
+                )
             ),
 
         "{{OS}}":
             html.escape(
-                system_info["os"]
+                str(
+                    system_info["os"]
+                )
             ),
 
         "{{KERNEL}}":
             html.escape(
-                system_info["kernel"]
+                str(
+                    system_info["kernel"]
+                )
             ),
 
         "{{DATE}}":
@@ -1938,15 +2035,18 @@ def generate_html_report(
 
         "{{RESULTS_ROWS}}":
             results_rows
+
     }
 
-    # --------------------------------------------------------
-    # Remplacement des variables
-    # --------------------------------------------------------
+    # ========================================================
+    # REMPLACEMENT DES VARIABLES
+    # ========================================================
 
     report = template
 
-    for variable, value in variables.items():
+    for variable, value in (
+        variables.items()
+    ):
 
         if variable not in report:
 
@@ -1960,14 +2060,32 @@ def generate_html_report(
             value
         )
 
-    # --------------------------------------------------------
-    # Écriture du rapport
-    # --------------------------------------------------------
+    # ========================================================
+    # ÉCRITURE DU RAPPORT FINAL
+    # ========================================================
 
-    output_file.write_text(
-        report,
-        encoding="utf-8"
-    )
+    try:
+
+        output_file.write_text(
+
+            report,
+
+            encoding="utf-8"
+
+        )
+
+    except Exception as exc:
+
+        logging.exception(
+            "Impossible d'écrire le rapport HTML"
+        )
+
+        raise RuntimeError(
+
+            "Impossible d'écrire "
+            f"{output_file} : {exc}"
+
+        ) from exc
 
     logging.info(
         "Rapport HTML créé : %s",
@@ -1976,51 +2094,76 @@ def generate_html_report(
 
 
 # ============================================================
-# VALIDATION DES DOSSIERS
+# PRÉPARATION DES DOSSIERS
 # ============================================================
 
 def prepare_directories():
     """
-    Crée les répertoires nécessaires.
+    Vérifie et crée les dossiers nécessaires.
     """
 
     logging.info(
         "Préparation des répertoires"
     )
 
+    # --------------------------------------------------------
     # Logs
+    # --------------------------------------------------------
+
     LOG_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
+    # --------------------------------------------------------
     # Rapports
+    # --------------------------------------------------------
+
     REPORT_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
+    # --------------------------------------------------------
     # Base
+    # --------------------------------------------------------
+
     if not BASE_DIR.exists():
 
         raise FileNotFoundError(
+
             "Le dossier base est introuvable : "
             f"{BASE_DIR}"
+
+        )
+
+    if not BASE_HTML.exists():
+
+        raise FileNotFoundError(
+
+            "Le template HTML est introuvable : "
+            f"{BASE_HTML}"
+
         )
 
     logging.info(
-        "Dossier logs    : %s",
+        "Dossier base : %s",
+        BASE_DIR
+    )
+
+    logging.info(
+        "Template HTML : %s",
+        BASE_HTML
+    )
+
+    logging.info(
+        "Dossier logs : %s",
         LOG_DIR
     )
 
     logging.info(
         "Dossier rapports : %s",
         REPORT_DIR
-    )
-
-    logging.info(
-        "Dossier base    : %s",
-        BASE_DIR
     )
 
 
@@ -2036,25 +2179,37 @@ def display_summary(
     log_file
 ):
     """
-    Affiche le résumé de l'audit dans le terminal.
+    Affiche le résumé dans le terminal.
     """
 
     ok_count = sum(
+
         1
+
         for result in results
+
         if result["status"] == "OK"
+
     )
 
     warning_count = sum(
+
         1
+
         for result in results
+
         if result["status"] == "WARNING"
+
     )
 
     ko_count = sum(
+
         1
+
         for result in results
+
         if result["status"] == "KO"
+
     )
 
     print()
@@ -2076,9 +2231,11 @@ def display_summary(
     for result in results:
 
         print(
+
             f"{result['status']:8} | "
             f"{result['name']} | "
             f"{result['details']}"
+
         )
 
     print()
@@ -2137,33 +2294,24 @@ def display_summary(
 
 
 # ============================================================
-# MAIN
+# FONCTION PRINCIPALE
 # ============================================================
 
 def main():
     """
-    Fonction principale.
+    Fonction principale du programme.
     """
 
     # --------------------------------------------------------
-    # Initialisation du logging
+    # Initialisation logging
     # --------------------------------------------------------
 
     log_file = setup_logging()
 
     try:
 
-        logging.info(
-            "Initialisation du script"
-        )
-
-        logging.info(
-            "Répertoire du script : %s",
-            SCRIPT_DIR
-        )
-
         # ----------------------------------------------------
-        # Préparation des dossiers
+        # Préparation
         # ----------------------------------------------------
 
         prepare_directories()
@@ -2172,7 +2320,9 @@ def main():
         # Informations système
         # ----------------------------------------------------
 
-        system_info = get_system_info()
+        system_info = (
+            get_system_info()
+        )
 
         logging.info(
             "Serveur : %s",
@@ -2180,7 +2330,7 @@ def main():
         )
 
         logging.info(
-            "Système : %s",
+            "OS : %s",
             system_info["os"]
         )
 
@@ -2190,49 +2340,70 @@ def main():
         )
 
         # ----------------------------------------------------
-        # Noms des rapports
+        # Nom des fichiers
         # ----------------------------------------------------
 
-        today = datetime.now().strftime(
-            "%Y-%m-%d"
+        date_string = (
+            datetime.now()
+            .strftime(
+                "%Y-%m-%d"
+            )
         )
+
+        # ----------------------------------------------------
+        # Rapport TXT
+        # ----------------------------------------------------
 
         text_file = (
+
             REPORT_DIR /
-            f"audit_securite_{today}.txt"
+
+            f"audit_securite_{date_string}.txt"
+
         )
 
+        # ----------------------------------------------------
+        # Rapport HTML
+        # ----------------------------------------------------
+
         html_file = (
+
             REPORT_DIR /
+
             "rapport_conformite.html"
+
         )
 
         logging.info(
-            "Rapport TXT : %s",
+            "Fichier rapport TXT : %s",
             text_file
         )
 
         logging.info(
-            "Rapport HTML : %s",
+            "Fichier rapport HTML : %s",
             html_file
         )
 
         # ----------------------------------------------------
-        # Exécution audit
+        # Audit
         # ----------------------------------------------------
 
-        results = run_audit()
+        results = (
+            run_audit()
+        )
 
         # ----------------------------------------------------
-        # Calcul score
+        # Score
         # ----------------------------------------------------
 
-        score = calculate_score(
-            results
+        score = (
+            calculate_score(
+                results
+            )
         )
 
         logging.info(
-            "Score indicatif calculé : %d%%",
+            "Score indicatif : %d%%",
             score
         )
 
@@ -2241,10 +2412,15 @@ def main():
         # ----------------------------------------------------
 
         generate_text_report(
+
             results,
+
             system_info,
+
             score,
+
             text_file
+
         )
 
         # ----------------------------------------------------
@@ -2252,10 +2428,15 @@ def main():
         # ----------------------------------------------------
 
         generate_html_report(
+
             results,
+
             system_info,
+
             score,
+
             html_file
+
         )
 
         # ----------------------------------------------------
@@ -2263,30 +2444,33 @@ def main():
         # ----------------------------------------------------
 
         display_summary(
+
             results,
+
             score,
+
             text_file,
+
             html_file,
+
             log_file
+
+        )
+
+        # ----------------------------------------------------
+        # Fin
+        # ----------------------------------------------------
+
+        logging.info(
+            "=" * 70
         )
 
         logging.info(
-            "Audit terminé avec succès"
+            "AUDIT TERMINÉ AVEC SUCCÈS"
         )
 
         logging.info(
-            "Rapport TXT : %s",
-            text_file
-        )
-
-        logging.info(
-            "Rapport HTML : %s",
-            html_file
-        )
-
-        logging.info(
-            "Fichier LOG : %s",
-            log_file
+            "=" * 70
         )
 
         return 0
@@ -2297,8 +2481,13 @@ def main():
             "Audit interrompu par l'utilisateur"
         )
 
+        print()
         print(
-            "\n[!] Audit interrompu."
+            "[!] Audit interrompu."
+        )
+
+        print(
+            f"[!] Log : {log_file}"
         )
 
         return 130
@@ -2306,7 +2495,7 @@ def main():
     except Exception as exc:
 
         logging.exception(
-            "ERREUR FATALE PENDANT L'AUDIT"
+            "ERREUR FATALE"
         )
 
         print()
@@ -2320,7 +2509,7 @@ def main():
         )
 
         print(
-            f"Consultez le log : {log_file}"
+            f"Log : {log_file}"
         )
 
         return 1
