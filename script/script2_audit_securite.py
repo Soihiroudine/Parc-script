@@ -3,10 +3,10 @@
 
 """
 ============================================================
-AUDIT DE CONFORMITÉ SÉCURITÉ
+AUDIT DE SÉCURITÉ - WINDOWS / LINUX
 ============================================================
 
-Arborescence attendue :
+Arborescence :
 
 mon_projet/
 │
@@ -21,23 +21,24 @@ mon_projet/
 └── rapports/
     └── audi_securite/
 
-Le script utilise automatiquement la racine du projet :
+Le script détecte automatiquement le système :
 
-    mon_projet/
+    Windows
+    Linux
 
-Les fichiers sont générés dans :
-
-    Logs :
-        mon_projet/logs/
-
-    Rapports :
-        mon_projet/rapports/audi_securite/
-
-Le template HTML est chargé depuis :
+Le template HTML est TOUJOURS recherché ici :
 
     mon_projet/base/rapport_conformite.html
 
-============================================================
+Les logs sont créés ici :
+
+    mon_projet/logs/
+
+Les rapports sont créés ici :
+
+    mon_projet/rapports/audi_securite/
+
+Aucune bibliothèque Python externe n'est nécessaire.
 """
 
 # ============================================================
@@ -45,225 +46,116 @@ Le template HTML est chargé depuis :
 # ============================================================
 
 import sys
+import os
 import html
 import socket
 import logging
+import platform
 import subprocess
+import shutil
+import re
 
-from datetime import datetime
 from pathlib import Path
+from datetime import datetime
 
 
 # ============================================================
-# CHEMINS DU PROJET
+# DÉTERMINATION DES CHEMINS
 # ============================================================
 
-"""
-Le script se trouve ici :
+SCRIPT_FILE = Path(__file__).resolve()
 
-    mon_projet/script/script2_audit_securite.py
+SCRIPT_DIR = SCRIPT_FILE.parent
 
-Donc :
+PROJECT_DIR = SCRIPT_DIR.parent
 
-    __file__
-        ↓
-    mon_projet/script/script2_audit_securite.py
+BASE_DIR = PROJECT_DIR / "base"
 
-    .parent
-        ↓
-    mon_projet/script/
+BASE_HTML = BASE_DIR / "rapport_conformite.html"
 
-    .parent.parent
-        ↓
-    mon_projet/
+LOG_DIR = PROJECT_DIR / "logs"
 
-PROJECT_DIR correspond donc toujours à la racine du projet.
-"""
-
-SCRIPT_FILE = (
-    Path(__file__)
-    .resolve()
-)
-
-SCRIPT_DIR = (
-    SCRIPT_FILE.parent
-)
-
-PROJECT_DIR = (
-    SCRIPT_DIR.parent
-)
+REPORT_DIR = PROJECT_DIR / "rapports" / "audi_securite"
 
 
 # ============================================================
-# DOSSIER BASE
+# VARIABLES GLOBALES
 # ============================================================
 
-BASE_DIR = (
-    PROJECT_DIR /
-    "base"
-)
+OPERATING_SYSTEM = platform.system().lower()
 
+IS_WINDOWS = OPERATING_SYSTEM == "windows"
 
-# ============================================================
-# TEMPLATE HTML
-# ============================================================
-
-BASE_HTML = (
-    BASE_DIR /
-    "rapport_conformite.html"
-)
+IS_LINUX = OPERATING_SYSTEM == "linux"
 
 
 # ============================================================
-# DOSSIER LOGS
-# ============================================================
-
-LOG_DIR = (
-    PROJECT_DIR /
-    "logs"
-)
-
-
-# ============================================================
-# DOSSIER RAPPORTS
-# ============================================================
-
-REPORT_DIR = (
-    PROJECT_DIR /
-    "rapports" /
-    "audi_securite"
-)
-
-
-# ============================================================
-# CONFIGURATION SSH
-# ============================================================
-
-SSH_CONFIG = Path(
-    "/etc/ssh/sshd_config"
-)
-
-
-# ============================================================
-# FICHIERS DE LOGS LINUX
-# ============================================================
-
-LOG_FILES = [
-
-    "/var/log/auth.log",
-
-    "/var/log/secure",
-
-    "/var/log/syslog",
-
-    "/var/log/messages",
-
-]
-
-
-# ============================================================
-# PORTS SSH STANDARDS
-# ============================================================
-
-STANDARD_SSH_PORTS = {
-
-    22
-
-}
-
-
-# ============================================================
-# INITIALISATION DU LOGGING
+# LOGGING
 # ============================================================
 
 def setup_logging():
     """
-    Initialise le système de logs.
-
-    Un nouveau fichier est créé à chaque exécution :
-
-        mon_projet/logs/
-            audit_securite_YYYY-MM-DD_HH-MM-SS.log
+    Création du fichier de log.
     """
-
-    # --------------------------------------------------------
-    # Création du dossier logs
-    # --------------------------------------------------------
 
     LOG_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    # --------------------------------------------------------
-    # Date / heure
-    # --------------------------------------------------------
-
-    timestamp = (
-        datetime.now()
-        .strftime(
-            "%Y-%m-%d_%H-%M-%S"
-        )
+    timestamp = datetime.now().strftime(
+        "%Y-%m-%d_%H-%M-%S"
     )
-
-    # --------------------------------------------------------
-    # Fichier log
-    # --------------------------------------------------------
 
     log_file = (
         LOG_DIR /
         f"audit_securite_{timestamp}.log"
     )
 
-    # --------------------------------------------------------
-    # Configuration logging
-    # --------------------------------------------------------
+    logger = logging.getLogger()
 
-    logging.basicConfig(
-
-        level=logging.INFO,
-
-        format=(
-            "%(asctime)s | "
-            "%(levelname)s | "
-            "%(message)s"
-        ),
-
-        handlers=[
-
-            logging.FileHandler(
-                log_file,
-                encoding="utf-8"
-            ),
-
-            logging.StreamHandler(
-                sys.stdout
-            )
-
-        ]
-
+    logger.setLevel(
+        logging.INFO
     )
 
-    logging.info(
-        "=" * 70
+    logger.handlers.clear()
+
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(message)s"
     )
 
-    logging.info(
-        "DÉMARRAGE DE L'AUDIT DE SÉCURITÉ"
+    file_handler = logging.FileHandler(
+        log_file,
+        encoding="utf-8"
     )
 
-    logging.info(
-        "=" * 70
+    file_handler.setFormatter(
+        formatter
     )
 
+    console_handler = logging.StreamHandler(
+        sys.stdout
+    )
+
+    console_handler.setFormatter(
+        formatter
+    )
+
+    logger.addHandler(
+        file_handler
+    )
+
+    logger.addHandler(
+        console_handler
+    )
+
+    logging.info("=" * 70)
+    logging.info("DÉMARRAGE DE L'AUDIT DE SÉCURITÉ")
+    logging.info("=" * 70)
+
     logging.info(
-        "Fichier Python : %s",
+        "Script : %s",
         SCRIPT_FILE
-    )
-
-    logging.info(
-        "Répertoire script : %s",
-        SCRIPT_DIR
     )
 
     logging.info(
@@ -272,65 +164,108 @@ def setup_logging():
     )
 
     logging.info(
+        "Système détecté : %s",
+        platform.system()
+    )
+
+    logging.info(
+        "Version système : %s",
+        platform.version()
+    )
+
+    logging.info(
+        "Architecture : %s",
+        platform.machine()
+    )
+
+    logging.info(
         "Template HTML : %s",
         BASE_HTML
     )
 
     logging.info(
-        "Répertoire logs : %s",
+        "Logs : %s",
         LOG_DIR
     )
 
     logging.info(
-        "Répertoire rapports : %s",
+        "Rapports : %s",
         REPORT_DIR
-    )
-
-    logging.info(
-        "Fichier log : %s",
-        log_file
     )
 
     return log_file
 
 
 # ============================================================
-# EXÉCUTION D'UNE COMMANDE
+# UTILITAIRE - EXÉCUTION COMMANDE
 # ============================================================
 
 def run_command(
     command,
-    timeout=15
+    timeout=30,
+    powershell=False
 ):
     """
-    Exécute une commande système.
+    Exécute une commande.
 
     Retourne :
 
-        code retour
+        return_code
         stdout
         stderr
     """
 
-    logging.debug(
-        "Commande : %s",
-        command
-    )
-
     try:
 
-        result = subprocess.run(
+        if powershell:
 
+            executable = shutil.which(
+                "powershell"
+            )
+
+            if executable is None:
+
+                executable = shutil.which(
+                    "pwsh"
+                )
+
+            if executable is None:
+
+                return (
+                    -1,
+                    "",
+                    "PowerShell introuvable"
+                )
+
+            final_command = [
+                executable,
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                command
+            ]
+
+        elif isinstance(
             command,
+            list
+        ):
 
-            shell=True,
+            final_command = command
 
+        else:
+
+            final_command = command
+
+        result = subprocess.run(
+            final_command,
             capture_output=True,
-
             text=True,
-
-            timeout=timeout
-
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+            shell=False
         )
 
         return (
@@ -349,13 +284,13 @@ def run_command(
         return (
             -1,
             "",
-            "Commande expirée"
+            "Timeout"
         )
 
     except Exception as exc:
 
         logging.exception(
-            "Erreur lors de l'exécution : %s",
+            "Erreur commande : %s",
             command
         )
 
@@ -367,44 +302,153 @@ def run_command(
 
 
 # ============================================================
-# VÉRIFICATION D'UNE COMMANDE
+# UTILITAIRE - COMMANDE DISPONIBLE
 # ============================================================
 
-def command_exists(
-    command
-):
+def command_exists(command):
     """
     Vérifie si une commande existe.
     """
 
-    code, _, _ = run_command(
-        f"command -v {command}"
-    )
-
-    return code == 0
+    return shutil.which(
+        command
+    ) is not None
 
 
 # ============================================================
-# COULEUR DU STATUT
+# INFORMATIONS SYSTÈME
 # ============================================================
 
-def status_color(
-    status
-):
+def get_system_info():
     """
-    Retourne la couleur associée au statut.
+    Retourne les informations système.
     """
+
+    hostname = socket.gethostname()
+
+    system = platform.system()
+
+    release = platform.release()
+
+    version = platform.version()
+
+    machine = platform.machine()
+
+    processor = platform.processor()
+
+    if IS_WINDOWS:
+
+        code, edition, _ = run_command(
+            "(Get-CimInstance Win32_OperatingSystem).Caption",
+            powershell=True
+        )
+
+        if code == 0 and edition:
+
+            operating_system = edition
+
+        else:
+
+            operating_system = (
+                f"{system} {release}"
+            )
+
+        code, build, _ = run_command(
+            "(Get-CimInstance Win32_OperatingSystem).BuildNumber",
+            powershell=True
+        )
+
+        if code != 0:
+
+            build = ""
+
+    elif IS_LINUX:
+
+        operating_system = ""
+
+        os_release = Path(
+            "/etc/os-release"
+        )
+
+        if os_release.exists():
+
+            try:
+
+                content = os_release.read_text(
+                    encoding="utf-8"
+                )
+
+                for line in content.splitlines():
+
+                    if line.startswith(
+                        "PRETTY_NAME="
+                    ):
+
+                        operating_system = (
+                            line.split(
+                                "=",
+                                1
+                            )[1]
+                            .strip()
+                            .strip('"')
+                        )
+
+                        break
+
+            except Exception:
+
+                pass
+
+        if not operating_system:
+
+            operating_system = (
+                f"{system} {release}"
+            )
+
+        build = release
+
+    else:
+
+        operating_system = (
+            f"{system} {release}"
+        )
+
+        build = version
+
+    return {
+
+        "hostname": hostname,
+
+        "os": operating_system,
+
+        "release": release,
+
+        "version": version,
+
+        "build": build,
+
+        "architecture": machine,
+
+        "processor": processor
+
+    }
+
+
+# ============================================================
+# STATUT
+# ============================================================
+
+def status_color(status):
 
     colors = {
 
-        "OK":
-            "#198754",
+        "OK": "#198754",
 
-        "WARNING":
-            "#f0ad00",
+        "WARNING": "#f0ad00",
 
-        "KO":
-            "#dc3545"
+        "KO": "#dc3545",
+
+        "N/A": "#6c757d"
 
     }
 
@@ -414,625 +458,1018 @@ def status_color(
     )
 
 
-# ============================================================
-# TEXTE DU STATUT
-# ============================================================
+def status_text(status):
 
-def status_text(
-    status
-):
-    """
-    Convertit un statut interne en texte.
-    """
+    values = {
 
-    statuses = {
+        "OK": "OK",
 
-        "OK":
-            "OK",
+        "WARNING": "AVERTISSEMENT",
 
-        "WARNING":
-            "AVERTISSEMENT",
+        "KO": "NON CONFORME",
 
-        "KO":
-            "NON CONFORME"
+        "N/A": "NON APPLICABLE"
 
     }
 
-    return statuses.get(
+    return values.get(
         status,
         status
     )
 
 
 # ============================================================
-# INFORMATIONS SYSTÈME
+# CRÉATION D'UN RÉSULTAT
 # ============================================================
 
-def get_system_info():
-    """
-    Récupère les informations du serveur.
-    """
-
-    logging.info(
-        "Collecte des informations système"
-    )
-
-    # --------------------------------------------------------
-    # Hostname
-    # --------------------------------------------------------
-
-    hostname = (
-        socket.gethostname()
-    )
-
-    # --------------------------------------------------------
-    # OS
-    # --------------------------------------------------------
-
-    code, os_info, _ = run_command(
-
-        "grep '^PRETTY_NAME=' "
-        "/etc/os-release "
-        "| cut -d= -f2-"
-
-    )
-
-    if (
-        code == 0
-        and os_info
-    ):
-
-        os_info = (
-            os_info
-            .strip('"')
-        )
-
-    else:
-
-        os_info = (
-            "Linux"
-        )
-
-    # --------------------------------------------------------
-    # Kernel
-    # --------------------------------------------------------
-
-    code, kernel, _ = run_command(
-        "uname -r"
-    )
-
-    if not kernel:
-
-        kernel = (
-            "Inconnu"
-        )
-
+def result(
+    name,
+    status,
+    details,
+    category
+):
     return {
 
-        "hostname":
-            hostname,
+        "name": name,
 
-        "os":
-            os_info,
+        "status": status,
 
-        "kernel":
-            kernel
+        "details": details,
+
+        "category": category
 
     }
 
 
 # ============================================================
-# CONFIGURATION SSH EFFECTIVE
+# WINDOWS - FIREWALL
 # ============================================================
 
-def get_sshd_effective_config():
-    """
-    Récupère la configuration SSH effective.
-
-    Utilise :
-
-        sshd -T
-
-    afin de tenir compte notamment
-    des fichiers Include.
-    """
+def windows_firewall():
 
     logging.info(
-        "Lecture de la configuration SSH effective"
+        "Windows : contrôle du pare-feu"
     )
 
-    if not command_exists(
-        "sshd"
-    ):
-
-        logging.warning(
-            "La commande sshd est introuvable"
-        )
-
-        return None
+    command = """
+Get-NetFirewallProfile |
+Select-Object Name, Enabled |
+ConvertTo-Json -Compress
+"""
 
     code, stdout, stderr = run_command(
-        "sshd -T 2>/dev/null"
+        command,
+        powershell=True
     )
 
     if code != 0:
 
-        logging.warning(
-            "Impossible de récupérer "
-            "la configuration SSH effective"
+        return result(
+            "Pare-feu Windows",
+            "WARNING",
+            "Impossible d'interroger le pare-feu Windows",
+            "Windows"
         )
 
-        return None
+    enabled = []
+
+    disabled = []
+
+    for profile in (
+        "Domain",
+        "Private",
+        "Public"
+    ):
+
+        pattern = (
+            rf'"Name"\s*:\s*"{profile}".*?'
+            rf'"Enabled"\s*:\s*(true|false)'
+        )
+
+        match = re.search(
+            pattern,
+            stdout,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            value = (
+                match.group(1).lower()
+                == "true"
+            )
+
+            if value:
+
+                enabled.append(
+                    profile
+                )
+
+            else:
+
+                disabled.append(
+                    profile
+                )
+
+    if disabled:
+
+        return result(
+            "Pare-feu Windows",
+            "KO",
+            "Profil(s) désactivé(s) : "
+            + ", ".join(disabled),
+            "Windows"
+        )
+
+    if enabled:
+
+        return result(
+            "Pare-feu Windows",
+            "OK",
+            "Profils actifs : "
+            + ", ".join(enabled),
+            "Windows"
+        )
+
+    return result(
+        "Pare-feu Windows",
+        "WARNING",
+        "État des profils impossible à déterminer",
+        "Windows"
+    )
+
+
+# ============================================================
+# WINDOWS - DEFENDER
+# ============================================================
+
+def windows_defender():
+
+    logging.info(
+        "Windows : contrôle Microsoft Defender"
+    )
+
+    command = """
+Get-MpComputerStatus |
+Select-Object AntivirusEnabled,
+              RealTimeProtectionEnabled,
+              AntispywareEnabled,
+              AntivirusSignatureAge |
+ConvertTo-Json -Compress
+"""
+
+    code, stdout, stderr = run_command(
+        command,
+        powershell=True
+    )
+
+    if code != 0:
+
+        return result(
+            "Microsoft Defender",
+            "WARNING",
+            "Impossible d'interroger Microsoft Defender",
+            "Windows"
+        )
+
+    values = {}
+
+    for key in [
+        "AntivirusEnabled",
+        "RealTimeProtectionEnabled",
+        "AntispywareEnabled",
+        "AntivirusSignatureAge"
+    ]:
+
+        pattern = (
+            rf'"{key}"\s*:\s*'
+            rf'(".*?"|true|false|\d+|null)'
+        )
+
+        match = re.search(
+            pattern,
+            stdout,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            values[key] = (
+                match.group(1)
+                .strip('"')
+            )
+
+    problems = []
+
+    for key in [
+        "AntivirusEnabled",
+        "RealTimeProtectionEnabled",
+        "AntispywareEnabled"
+    ]:
+
+        value = values.get(
+            key
+        )
+
+        if value is not None:
+
+            if value.lower() != "true":
+
+                problems.append(
+                    key
+                )
+
+    signature_age = values.get(
+        "AntivirusSignatureAge"
+    )
+
+    if signature_age:
+
+        try:
+
+            if int(
+                signature_age
+            ) > 7:
+
+                problems.append(
+                    "signatures anciennes"
+                )
+
+        except ValueError:
+
+            pass
+
+    if problems:
+
+        return result(
+            "Microsoft Defender",
+            "WARNING",
+            "Point(s) à vérifier : "
+            + ", ".join(problems),
+            "Windows"
+        )
+
+    return result(
+        "Microsoft Defender",
+        "OK",
+        "Antivirus, protection temps réel et antispyware actifs",
+        "Windows"
+    )
+
+
+# ============================================================
+# WINDOWS - RDP
+# ============================================================
+
+def windows_rdp():
+
+    logging.info(
+        "Windows : contrôle RDP"
+    )
+
+    command = """
+$path = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server'
+(Get-ItemProperty -Path $path -Name fDenyTSConnections).fDenyTSConnections
+"""
+
+    code, stdout, stderr = run_command(
+        command,
+        powershell=True
+    )
+
+    if code != 0:
+
+        return result(
+            "RDP",
+            "WARNING",
+            "Impossible de déterminer l'état de RDP",
+            "Windows"
+        )
+
+    value = stdout.strip()
+
+    if value == "1":
+
+        return result(
+            "RDP",
+            "OK",
+            "RDP est désactivé",
+            "Windows"
+        )
+
+    if value == "0":
+
+        return result(
+            "RDP",
+            "WARNING",
+            "RDP est activé ; vérifier que son exposition est nécessaire",
+            "Windows"
+        )
+
+    return result(
+        "RDP",
+        "WARNING",
+        "État RDP inconnu",
+        "Windows"
+    )
+
+
+# ============================================================
+# WINDOWS - SMBv1
+# ============================================================
+
+def windows_smb1():
+
+    logging.info(
+        "Windows : contrôle SMBv1"
+    )
+
+    command = """
+Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol |
+Select-Object State |
+ConvertTo-Json -Compress
+"""
+
+    code, stdout, stderr = run_command(
+        command,
+        powershell=True
+    )
+
+    if code != 0:
+
+        return result(
+            "SMBv1",
+            "WARNING",
+            "Impossible de déterminer l'état de SMBv1",
+            "Windows"
+        )
+
+    if (
+        "Disabled" in stdout
+        or
+        "disabled" in stdout
+    ):
+
+        return result(
+            "SMBv1",
+            "OK",
+            "SMBv1 est désactivé",
+            "Windows"
+        )
+
+    if (
+        "Enabled" in stdout
+        or
+        "enabled" in stdout
+    ):
+
+        return result(
+            "SMBv1",
+            "KO",
+            "SMBv1 est activé",
+            "Windows"
+        )
+
+    return result(
+        "SMBv1",
+        "WARNING",
+        "État de SMBv1 indéterminé",
+        "Windows"
+    )
+
+
+# ============================================================
+# WINDOWS - UAC
+# ============================================================
+
+def windows_uac():
+
+    logging.info(
+        "Windows : contrôle UAC"
+    )
+
+    command = """
+$path = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System'
+Get-ItemProperty -Path $path |
+Select-Object EnableLUA, ConsentPromptBehaviorAdmin |
+ConvertTo-Json -Compress
+"""
+
+    code, stdout, stderr = run_command(
+        command,
+        powershell=True
+    )
+
+    if code != 0:
+
+        return result(
+            "UAC",
+            "WARNING",
+            "Impossible de contrôler UAC",
+            "Windows"
+        )
+
+    if '"EnableLUA":1' in stdout.replace(
+        " ",
+        ""
+    ):
+
+        return result(
+            "UAC",
+            "OK",
+            "UAC est activé",
+            "Windows"
+        )
+
+    return result(
+        "UAC",
+        "KO",
+        "UAC semble désactivé",
+        "Windows"
+    )
+
+
+# ============================================================
+# WINDOWS - ADMINISTRATEURS LOCAUX
+# ============================================================
+
+def windows_local_admins():
+
+    logging.info(
+        "Windows : contrôle des administrateurs locaux"
+    )
+
+    command = """
+Get-LocalGroupMember -Group 'Administrators' |
+Select-Object Name, PrincipalSource |
+ConvertTo-Json -Compress
+"""
+
+    code, stdout, stderr = run_command(
+        command,
+        powershell=True
+    )
+
+    if code != 0:
+
+        return result(
+            "Administrateurs locaux",
+            "WARNING",
+            "Impossible de récupérer les administrateurs locaux",
+            "Windows"
+        )
+
+    if not stdout:
+
+        return result(
+            "Administrateurs locaux",
+            "WARNING",
+            "Aucun résultat récupéré",
+            "Windows"
+        )
+
+    members = re.findall(
+        r'"Name"\s*:\s*"([^"]+)"',
+        stdout
+    )
+
+    if not members:
+
+        return result(
+            "Administrateurs locaux",
+            "WARNING",
+            "Liste des administrateurs impossible à analyser",
+            "Windows"
+        )
+
+    return result(
+        "Administrateurs locaux",
+        "OK",
+        f"{len(members)} membre(s) du groupe Administrators détecté(s)",
+        "Windows"
+    )
+
+
+# ============================================================
+# WINDOWS - MISES À JOUR
+# ============================================================
+
+def windows_updates():
+
+    logging.info(
+        "Windows : contrôle des mises à jour"
+    )
+
+    command = """
+$session = New-Object -ComObject Microsoft.Update.Session
+$searcher = $session.CreateUpdateSearcher()
+$result = $searcher.Search("IsInstalled=0 and IsHidden=0")
+$result.Updates.Count
+"""
+
+    code, stdout, stderr = run_command(
+        command,
+        timeout=60,
+        powershell=True
+    )
+
+    if code != 0:
+
+        return result(
+            "Mises à jour Windows",
+            "WARNING",
+            "Impossible d'interroger Windows Update",
+            "Windows"
+        )
+
+    try:
+
+        count = int(
+            stdout.strip()
+        )
+
+    except ValueError:
+
+        return result(
+            "Mises à jour Windows",
+            "WARNING",
+            "Nombre de mises à jour impossible à déterminer",
+            "Windows"
+        )
+
+    if count == 0:
+
+        return result(
+            "Mises à jour Windows",
+            "OK",
+            "Aucune mise à jour non installée détectée",
+            "Windows"
+        )
+
+    return result(
+        "Mises à jour Windows",
+        "WARNING",
+        f"{count} mise(s) à jour non installée(s) détectée(s)",
+        "Windows"
+    )
+
+
+# ============================================================
+# WINDOWS - COMPTES LOCAUX
+# ============================================================
+
+def windows_accounts():
+
+    logging.info(
+        "Windows : contrôle des comptes locaux"
+    )
+
+    command = """
+Get-LocalUser |
+Select-Object Name, Enabled, PasswordRequired, PasswordExpires |
+ConvertTo-Json -Compress
+"""
+
+    code, stdout, stderr = run_command(
+        command,
+        powershell=True
+    )
+
+    if code != 0:
+
+        return result(
+            "Comptes locaux",
+            "WARNING",
+            "Impossible de récupérer les comptes locaux",
+            "Windows"
+        )
+
+    users = re.findall(
+        r'"Name"\s*:\s*"([^"]+)"',
+        stdout
+    )
+
+    if not users:
+
+        return result(
+            "Comptes locaux",
+            "WARNING",
+            "Impossible d'analyser les comptes locaux",
+            "Windows"
+        )
+
+    return result(
+        "Comptes locaux",
+        "OK",
+        f"{len(users)} compte(s) local(aux) détecté(s)",
+        "Windows"
+    )
+
+
+# ============================================================
+# WINDOWS - SERVICES SENSIBLES
+# ============================================================
+
+def windows_services():
+
+    logging.info(
+        "Windows : contrôle des services"
+    )
+
+    services = [
+
+        "RemoteRegistry",
+
+        "Telnet",
+
+    ]
+
+    suspicious = []
+
+    for service in services:
+
+        command = (
+            f"(Get-Service -Name '{service}' "
+            f"-ErrorAction SilentlyContinue).Status"
+        )
+
+        code, stdout, stderr = run_command(
+            command,
+            powershell=True
+        )
+
+        if (
+            code == 0
+            and
+            stdout.strip().lower() == "running"
+        ):
+
+            suspicious.append(
+                service
+            )
+
+    if suspicious:
+
+        return result(
+            "Services sensibles",
+            "WARNING",
+            "Service(s) sensible(s) actif(s) : "
+            + ", ".join(suspicious),
+            "Windows"
+        )
+
+    return result(
+        "Services sensibles",
+        "OK",
+        "Aucun des services contrôlés n'est actif",
+        "Windows"
+    )
+
+
+# ============================================================
+# LINUX - SSH
+# ============================================================
+
+def linux_sshd_config():
+
+    logging.info(
+        "Linux : contrôle de la configuration SSH"
+    )
+
+    sshd_config = Path(
+        "/etc/ssh/sshd_config"
+    )
+
+    if not sshd_config.exists():
+
+        return [
+
+            result(
+                "SSH - Configuration",
+                "N/A",
+                "OpenSSH non configuré ou fichier sshd_config absent",
+                "Linux"
+            )
+
+        ]
 
     config = {}
 
-    for line in stdout.splitlines():
+    try:
+
+        content = sshd_config.read_text(
+            encoding="utf-8",
+            errors="replace"
+        )
+
+    except Exception as exc:
+
+        return [
+
+            result(
+                "SSH - Configuration",
+                "WARNING",
+                f"Impossible de lire sshd_config : {exc}",
+                "Linux"
+            )
+
+        ]
+
+    for line in content.splitlines():
+
+        line = line.strip()
+
+        if not line:
+            continue
+
+        if line.startswith("#"):
+            continue
 
         parts = line.split(
             None,
             1
         )
 
-        if len(parts) != 2:
+        if len(parts) == 2:
 
-            continue
+            key = parts[0].lower()
 
-        key, value = parts
+            value = parts[1].strip()
 
-        config[
-            key.lower()
-        ] = value.strip()
+            config[key] = value
 
-    return config
-
-
-# ============================================================
-# CONTRÔLE SSH - PORT
-# ============================================================
-
-def check_ssh_port():
-    """
-    Vérifie que SSH utilise un port
-    différent du port standard 22.
-    """
-
-    logging.info(
-        "Contrôle : port SSH"
-    )
-
-    config = (
-        get_sshd_effective_config()
-    )
-
-    if config:
-
-        port_value = config.get(
-            "port"
-        )
-
-        if port_value:
-
-            try:
-
-                port = int(
-                    port_value
-                )
-
-                logging.info(
-                    "Port SSH : %d",
-                    port
-                )
-
-                if port not in (
-                    STANDARD_SSH_PORTS
-                ):
-
-                    return {
-
-                        "name":
-                            "SSH - Port non standard",
-
-                        "status":
-                            "OK",
-
-                        "details":
-                            f"Port SSH configuré : {port}"
-
-                    }
-
-                return {
-
-                    "name":
-                        "SSH - Port non standard",
-
-                    "status":
-                        "KO",
-
-                    "details":
-                        f"SSH utilise le port standard {port}"
-
-                }
-
-            except ValueError:
-
-                logging.warning(
-                    "Port SSH invalide : %s",
-                    port_value
-                )
+    results = []
 
     # --------------------------------------------------------
-    # Fallback sshd_config
+    # PermitRootLogin
     # --------------------------------------------------------
 
-    try:
+    root_login = config.get(
+        "permitrootlogin"
+    )
 
-        content = (
-            SSH_CONFIG.read_text(
-                encoding="utf-8"
+    if root_login:
+
+        if root_login.lower() == "no":
+
+            results.append(
+                result(
+                    "SSH - Connexion root",
+                    "OK",
+                    "PermitRootLogin est désactivé",
+                    "Linux"
+                )
             )
-        )
 
-        ports = []
+        else:
 
-        for line in content.splitlines():
-
-            line = line.strip()
-
-            if not line:
-                continue
-
-            if line.startswith("#"):
-                continue
-
-            parts = line.split()
-
-            if (
-                len(parts) >= 2
-                and
-                parts[0].lower()
-                == "port"
-            ):
-
-                try:
-
-                    ports.append(
-                        int(parts[1])
-                    )
-
-                except ValueError:
-
-                    continue
-
-        if ports:
-
-            port = ports[0]
-
-            if port not in (
-                STANDARD_SSH_PORTS
-            ):
-
-                return {
-
-                    "name":
-                        "SSH - Port non standard",
-
-                    "status":
-                        "OK",
-
-                    "details":
-                        f"Port SSH configuré : {port}"
-
-                }
-
-            return {
-
-                "name":
-                    "SSH - Port non standard",
-
-                "status":
+            results.append(
+                result(
+                    "SSH - Connexion root",
                     "KO",
-
-                "details":
-                    f"SSH utilise le port standard {port}"
-
-            }
-
-    except FileNotFoundError:
-
-        logging.warning(
-            "Fichier SSH introuvable : %s",
-            SSH_CONFIG
-        )
-
-    except PermissionError:
-
-        logging.warning(
-            "Permission refusée : %s",
-            SSH_CONFIG
-        )
-
-    return {
-
-        "name":
-            "SSH - Port non standard",
-
-        "status":
-            "WARNING",
-
-        "details":
-            "Impossible de déterminer le port SSH"
-
-    }
-
-
-# ============================================================
-# CONTRÔLE SSH - ROOT
-# ============================================================
-
-def check_ssh_root_login():
-    """
-    Vérifie PermitRootLogin.
-    """
-
-    logging.info(
-        "Contrôle : PermitRootLogin"
-    )
-
-    config = (
-        get_sshd_effective_config()
-    )
-
-    if config:
-
-        value = (
-            config.get(
-                "permitrootlogin",
-                ""
-            )
-            .lower()
-        )
-
-        logging.info(
-            "PermitRootLogin = %s",
-            value or "non défini"
-        )
-
-        if value == "no":
-
-            return {
-
-                "name":
-                    "SSH - PermitRootLogin",
-
-                "status":
-                    "OK",
-
-                "details":
-                    "Connexion SSH directe de root désactivée"
-
-            }
-
-        return {
-
-            "name":
-                "SSH - PermitRootLogin",
-
-            "status":
-                "KO",
-
-            "details":
-                "PermitRootLogin = "
-                + (
-                    value
-                    if value
-                    else "non défini"
+                    f"PermitRootLogin = {root_login}",
+                    "Linux"
                 )
-
-        }
-
-    return {
-
-        "name":
-            "SSH - PermitRootLogin",
-
-        "status":
-            "WARNING",
-
-        "details":
-            "Configuration SSH effective indisponible"
-
-    }
-
-
-# ============================================================
-# CONTRÔLE SSH - CLÉ PUBLIQUE
-# ============================================================
-
-def check_ssh_public_key():
-    """
-    Vérifie PubkeyAuthentication.
-    """
-
-    logging.info(
-        "Contrôle : authentification "
-        "par clé publique"
-    )
-
-    config = (
-        get_sshd_effective_config()
-    )
-
-    if config:
-
-        value = (
-            config.get(
-                "pubkeyauthentication",
-                ""
             )
-            .lower()
+
+    else:
+
+        results.append(
+            result(
+                "SSH - Connexion root",
+                "WARNING",
+                "PermitRootLogin non explicitement défini",
+                "Linux"
+            )
         )
-
-        logging.info(
-            "PubkeyAuthentication = %s",
-            value or "non défini"
-        )
-
-        if value == "yes":
-
-            return {
-
-                "name":
-                    "SSH - Authentification par clé publique",
-
-                "status":
-                    "OK",
-
-                "details":
-                    "PubkeyAuthentication activé"
-
-            }
-
-        return {
-
-            "name":
-                "SSH - Authentification par clé publique",
-
-            "status":
-                "KO",
-
-            "details":
-                "PubkeyAuthentication = "
-                + (
-                    value
-                    if value
-                    else "non défini"
-                )
-
-        }
-
-    return {
-
-        "name":
-            "SSH - Authentification par clé publique",
-
-        "status":
-            "WARNING",
-
-        "details":
-            "Configuration SSH effective indisponible"
-
-    }
-
-
-# ============================================================
-# CONTRÔLE FIREWALL
-# ============================================================
-
-def check_firewall():
-    """
-    Vérifie si un firewall actif est détecté.
-
-    Vérification :
-
-        1. UFW
-        2. nftables
-        3. iptables
-    """
-
-    logging.info(
-        "Contrôle : firewall"
-    )
 
     # --------------------------------------------------------
+    # PasswordAuthentication
+    # --------------------------------------------------------
+
+    password_auth = config.get(
+        "passwordauthentication"
+    )
+
+    if password_auth:
+
+        if password_auth.lower() == "no":
+
+            results.append(
+                result(
+                    "SSH - Authentification par mot de passe",
+                    "OK",
+                    "PasswordAuthentication est désactivé",
+                    "Linux"
+                )
+            )
+
+        else:
+
+            results.append(
+                result(
+                    "SSH - Authentification par mot de passe",
+                    "WARNING",
+                    "L'authentification SSH par mot de passe est activée",
+                    "Linux"
+                )
+            )
+
+    else:
+
+        results.append(
+            result(
+                "SSH - Authentification par mot de passe",
+                "WARNING",
+                "PasswordAuthentication non explicitement défini",
+                "Linux"
+            )
+        )
+
+    # --------------------------------------------------------
+    # PubkeyAuthentication
+    # --------------------------------------------------------
+
+    pubkey = config.get(
+        "pubkeyauthentication"
+    )
+
+    if pubkey:
+
+        if pubkey.lower() == "yes":
+
+            results.append(
+                result(
+                    "SSH - Authentification par clé",
+                    "OK",
+                    "PubkeyAuthentication est activé",
+                    "Linux"
+                )
+            )
+
+        else:
+
+            results.append(
+                result(
+                    "SSH - Authentification par clé",
+                    "WARNING",
+                    "PubkeyAuthentication est désactivé",
+                    "Linux"
+                )
+            )
+
+    else:
+
+        results.append(
+            result(
+                "SSH - Authentification par clé",
+                "WARNING",
+                "PubkeyAuthentication non explicitement défini",
+                "Linux"
+            )
+        )
+
+    # --------------------------------------------------------
+    # Port SSH
+    # --------------------------------------------------------
+
+    port = config.get(
+        "port"
+    )
+
+    if port:
+
+        try:
+
+            port_number = int(
+                port
+            )
+
+            if port_number != 22:
+
+                results.append(
+                    result(
+                        "SSH - Port",
+                        "OK",
+                        f"Port SSH configuré : {port_number}",
+                        "Linux"
+                    )
+                )
+
+            else:
+
+                results.append(
+                    result(
+                        "SSH - Port",
+                        "WARNING",
+                        "SSH utilise le port standard 22",
+                        "Linux"
+                    )
+                )
+
+        except ValueError:
+
+            results.append(
+                result(
+                    "SSH - Port",
+                    "WARNING",
+                    f"Port SSH invalide : {port}",
+                    "Linux"
+                )
+            )
+
+    return results
+
+
+# ============================================================
+# LINUX - FIREWALL
+# ============================================================
+
+def linux_firewall():
+
+    logging.info(
+        "Linux : contrôle du firewall"
+    )
+
     # UFW
-    # --------------------------------------------------------
-
     if command_exists(
         "ufw"
     ):
 
-        logging.info(
-            "UFW détecté"
-        )
-
         code, stdout, stderr = run_command(
-            "ufw status"
+            ["ufw", "status"]
         )
 
         if "Status: active" in stdout:
 
-            return {
+            return result(
+                "Firewall",
+                "OK",
+                "UFW est actif",
+                "Linux"
+            )
 
-                "name":
-                    "Firewall",
+    # firewalld
+    if command_exists(
+        "firewall-cmd"
+    ):
 
-                "status":
-                    "OK",
+        code, stdout, stderr = run_command(
+            [
+                "firewall-cmd",
+                "--state"
+            ]
+        )
 
-                "details":
-                    "UFW est actif"
+        if stdout.strip() == "running":
 
-            }
+            return result(
+                "Firewall",
+                "OK",
+                "firewalld est actif",
+                "Linux"
+            )
 
-    # --------------------------------------------------------
-    # NFTABLES
-    # --------------------------------------------------------
-
+    # nftables
     if command_exists(
         "nft"
     ):
 
-        logging.info(
-            "nftables détecté"
-        )
-
         code, stdout, stderr = run_command(
-            "nft list ruleset"
+            [
+                "nft",
+                "list",
+                "ruleset"
+            ]
         )
 
-        if (
-            code == 0
-            and stdout.strip()
-        ):
+        if code == 0 and stdout.strip():
 
-            return {
+            return result(
+                "Firewall",
+                "OK",
+                "nftables contient des règles",
+                "Linux"
+            )
 
-                "name":
-                    "Firewall",
-
-                "status":
-                    "OK",
-
-                "details":
-                    "nftables contient des règles"
-
-            }
-
-    # --------------------------------------------------------
-    # IPTABLES
-    # --------------------------------------------------------
-
+    # iptables
     if command_exists(
         "iptables"
     ):
 
-        logging.info(
-            "iptables détecté"
-        )
-
         code, stdout, stderr = run_command(
-            "iptables -L -n"
+            [
+                "iptables",
+                "-L",
+                "-n"
+            ]
         )
 
         if code == 0:
 
-            lines = (
-                stdout.splitlines()
-            )
+            lines = []
 
-            rules = []
-
-            for line in lines:
+            for line in stdout.splitlines():
 
                 if not line.strip():
                     continue
@@ -1047,75 +1484,49 @@ def check_firewall():
                 ):
                     continue
 
-                rules.append(
+                lines.append(
                     line
                 )
 
-            if rules:
+            if lines:
 
-                return {
+                return result(
+                    "Firewall",
+                    "OK",
+                    "iptables contient des règles",
+                    "Linux"
+                )
 
-                    "name":
-                        "Firewall",
-
-                    "status":
-                        "OK",
-
-                    "details":
-                        "iptables contient des règles"
-
-                }
-
-    return {
-
-        "name":
-            "Firewall",
-
-        "status":
-            "KO",
-
-        "details":
-            "Aucun firewall actif détecté"
-
-    }
-
-
-# ============================================================
-# CONTRÔLE MISES À JOUR
-# ============================================================
-
-def check_security_updates():
-    """
-    Vérifie les mises à jour disponibles.
-
-    Supporte :
-
-        APT
-        DNF
-    """
-
-    logging.info(
-        "Contrôle : mises à jour"
+    return result(
+        "Firewall",
+        "KO",
+        "Aucun firewall actif détecté",
+        "Linux"
     )
 
-    # --------------------------------------------------------
-    # APT
-    # --------------------------------------------------------
 
+# ============================================================
+# LINUX - MISES À JOUR
+# ============================================================
+
+def linux_updates():
+
+    logging.info(
+        "Linux : contrôle des mises à jour"
+    )
+
+    # Debian / Ubuntu
     if command_exists(
         "apt"
     ):
 
-        logging.info(
-            "APT détecté"
-        )
-
         code, stdout, stderr = run_command(
-
-            "apt list --upgradable 2>/dev/null",
-
-            timeout=30
-
+            [
+                "apt",
+                "list",
+                "--upgradable"
+            ],
+            timeout=60
         )
 
         if code == 0:
@@ -1124,165 +1535,112 @@ def check_security_updates():
 
             for line in stdout.splitlines():
 
-                if not line:
-                    continue
-
                 if line.startswith(
                     "Listing..."
                 ):
                     continue
 
-                updates.append(
-                    line
-                )
+                if line.strip():
+
+                    updates.append(
+                        line
+                    )
 
             if updates:
 
-                logging.warning(
-                    "%d paquet(s) pouvant être mis à jour",
-                    len(updates)
+                return result(
+                    "Mises à jour",
+                    "WARNING",
+                    f"{len(updates)} paquet(s) pouvant être mis à jour",
+                    "Linux"
                 )
 
-                return {
+            return result(
+                "Mises à jour",
+                "OK",
+                "Aucune mise à jour détectée",
+                "Linux"
+            )
 
-                    "name":
-                        "Mises à jour de sécurité",
+    # RHEL / Rocky / Alma / Fedora
+    for manager in [
+        "dnf",
+        "yum"
+    ]:
 
-                    "status":
-                        "WARNING",
+        if command_exists(
+            manager
+        ):
 
-                    "details":
-                        f"{len(updates)} paquet(s) "
-                        "pouvant être mis à jour"
+            code, stdout, stderr = run_command(
+                [
+                    manager,
+                    "check-update"
+                ],
+                timeout=60
+            )
 
-                }
+            if code == 100:
 
-            return {
-
-                "name":
-                    "Mises à jour de sécurité",
-
-                "status":
-                    "OK",
-
-                "details":
-                    "Aucune mise à jour disponible détectée"
-
-            }
-
-        return {
-
-            "name":
-                "Mises à jour de sécurité",
-
-            "status":
-                "WARNING",
-
-            "details":
-                "Impossible d'interroger APT"
-
-        }
-
-    # --------------------------------------------------------
-    # DNF
-    # --------------------------------------------------------
-
-    if command_exists(
-        "dnf"
-    ):
-
-        logging.info(
-            "DNF détecté"
-        )
-
-        code, stdout, stderr = run_command(
-
-            "dnf check-update",
-
-            timeout=30
-
-        )
-
-        if code == 100:
-
-            return {
-
-                "name":
-                    "Mises à jour de sécurité",
-
-                "status":
+                return result(
+                    "Mises à jour",
                     "WARNING",
+                    "Des mises à jour sont disponibles",
+                    "Linux"
+                )
 
-                "details":
-                    "Des mises à jour sont disponibles"
+            if code == 0:
 
-            }
-
-        if code == 0:
-
-            return {
-
-                "name":
-                    "Mises à jour de sécurité",
-
-                "status":
+                return result(
+                    "Mises à jour",
                     "OK",
+                    "Aucune mise à jour détectée",
+                    "Linux"
+                )
 
-                "details":
-                    "Aucune mise à jour disponible détectée"
-
-            }
-
-        return {
-
-            "name":
-                "Mises à jour de sécurité",
-
-            "status":
+            return result(
+                "Mises à jour",
                 "WARNING",
+                f"Impossible d'interroger {manager}",
+                "Linux"
+            )
 
-            "details":
-                "Impossible d'interroger DNF"
-
-        }
-
-    return {
-
-        "name":
-            "Mises à jour de sécurité",
-
-        "status":
-            "WARNING",
-
-        "details":
-            "Gestionnaire de paquets non reconnu"
-
-    }
-
-
-# ============================================================
-# CONTRÔLE JOURNAUX
-# ============================================================
-
-def check_logs():
-    """
-    Vérifie les journaux système.
-    """
-
-    logging.info(
-        "Contrôle : journaux système"
+    return result(
+        "Mises à jour",
+        "WARNING",
+        "Gestionnaire de paquets non reconnu",
+        "Linux"
     )
 
-    existing_logs = []
 
-    # --------------------------------------------------------
-    # Fichiers de logs
-    # --------------------------------------------------------
+# ============================================================
+# LINUX - JOURNAUX
+# ============================================================
 
-    for log_file in LOG_FILES:
+def linux_logs():
+
+    logging.info(
+        "Linux : contrôle des journaux"
+    )
+
+    paths = [
+
+        "/var/log/auth.log",
+
+        "/var/log/secure",
+
+        "/var/log/syslog",
+
+        "/var/log/messages"
+
+    ]
+
+    existing = []
+
+    for path_string in paths:
 
         path = Path(
-            log_file
+            path_string
         )
 
         try:
@@ -1293,398 +1651,569 @@ def check_logs():
                 path.stat().st_size > 0
             ):
 
-                existing_logs.append(
-                    log_file
+                existing.append(
+                    path_string
                 )
 
         except PermissionError:
 
             logging.warning(
                 "Permission refusée : %s",
-                log_file
+                path_string
             )
-
-    # --------------------------------------------------------
-    # Journald
-    # --------------------------------------------------------
-
-    journald_active = False
 
     if command_exists(
         "journalctl"
     ):
 
         code, stdout, stderr = run_command(
+            [
+                "journalctl",
+                "--no-pager",
+                "-n",
+                "5"
+            ]
+        )
 
-            "journalctl "
-            "--no-pager "
-            "-n 5 "
-            "2>/dev/null"
+        if code == 0 and stdout:
 
+            return result(
+                "Journaux système",
+                "OK",
+                "journald est disponible",
+                "Linux"
+            )
+
+    if existing:
+
+        return result(
+            "Journaux système",
+            "OK",
+            "Journal(s) détecté(s) : "
+            + ", ".join(existing),
+            "Linux"
+        )
+
+    return result(
+        "Journaux système",
+        "WARNING",
+        "Aucun journal système exploitable détecté",
+        "Linux"
+    )
+
+
+# ============================================================
+# LINUX - PERMISSIONS SSH
+# ============================================================
+
+def linux_ssh_permissions():
+
+    logging.info(
+        "Linux : contrôle des permissions SSH"
+    )
+
+    sshd_config = Path(
+        "/etc/ssh/sshd_config"
+    )
+
+    if not sshd_config.exists():
+
+        return result(
+            "Permissions SSH",
+            "N/A",
+            "sshd_config absent",
+            "Linux"
+        )
+
+    try:
+
+        mode = (
+            sshd_config.stat()
+            .st_mode
+        )
+
+        permissions = (
+            oct(
+                mode & 0o777
+            )
         )
 
         if (
-            code == 0
-            and
-            stdout.strip()
+            mode & 0o002
+            or
+            mode & 0o020
         ):
 
-            journald_active = True
-
-    # --------------------------------------------------------
-    # Résultat
-    # --------------------------------------------------------
-
-    if (
-        existing_logs
-        or journald_active
-    ):
-
-        details = []
-
-        if existing_logs:
-
-            details.append(
-                "logs actifs : "
-                + ", ".join(
-                    existing_logs
-                )
+            return result(
+                "Permissions SSH",
+                "KO",
+                f"sshd_config est trop permissif : {permissions}",
+                "Linux"
             )
 
-        if journald_active:
+        return result(
+            "Permissions SSH",
+            "OK",
+            f"Permissions sshd_config : {permissions}",
+            "Linux"
+        )
 
-            details.append(
-                "journald actif"
-            )
+    except Exception as exc:
 
-        return {
-
-            "name":
-                "Journaux système",
-
-            "status":
-                "OK",
-
-            "details":
-                " ; ".join(
-                    details
-                )
-
-        }
-
-    return {
-
-        "name":
-            "Journaux système",
-
-        "status":
-            "KO",
-
-        "details":
-            "Aucun journal système exploitable détecté"
-
-    }
+        return result(
+            "Permissions SSH",
+            "WARNING",
+            f"Impossible de vérifier les permissions : {exc}",
+            "Linux"
+        )
 
 
 # ============================================================
-# EXÉCUTION DE L'AUDIT
+# LINUX - UTILISATEUR ROOT
 # ============================================================
 
-def run_audit():
-    """
-    Exécute tous les contrôles.
-    """
+def linux_root_ssh_keys():
 
     logging.info(
-        "=" * 70
+        "Linux : contrôle des clés SSH de root"
     )
 
-    logging.info(
-        "DÉBUT DES CONTRÔLES"
+    authorized_keys = Path(
+        "/root/.ssh/authorized_keys"
     )
 
-    logging.info(
-        "=" * 70
-    )
+    if not authorized_keys.exists():
+
+        return result(
+            "Clés SSH root",
+            "OK",
+            "Aucune clé authorized_keys root détectée",
+            "Linux"
+        )
+
+    try:
+
+        lines = [
+
+            line
+
+            for line in authorized_keys.read_text(
+                encoding="utf-8",
+                errors="replace"
+            ).splitlines()
+
+            if line.strip()
+            and not line.strip().startswith("#")
+
+        ]
+
+        return result(
+            "Clés SSH root",
+            "WARNING",
+            f"{len(lines)} clé(s) SSH root détectée(s) ; vérifier leur nécessité",
+            "Linux"
+        )
+
+    except PermissionError:
+
+        return result(
+            "Clés SSH root",
+            "WARNING",
+            "Permission insuffisante pour lire authorized_keys",
+            "Linux"
+        )
+
+
+# ============================================================
+# AUDIT WINDOWS
+# ============================================================
+
+def run_windows_audit():
+
+    logging.info("=" * 70)
+    logging.info("AUDIT WINDOWS")
+    logging.info("=" * 70)
 
     results = []
 
     checks = [
 
-        check_ssh_port,
+        windows_firewall,
 
-        check_ssh_root_login,
+        windows_defender,
 
-        check_ssh_public_key,
+        windows_rdp,
 
-        check_firewall,
+        windows_smb1,
 
-        check_security_updates,
+        windows_uac,
 
-        check_logs,
+        windows_local_admins,
+
+        windows_updates,
+
+        windows_accounts,
+
+        windows_services
 
     ]
 
     for check in checks:
 
-        logging.info(
-            "Contrôle : %s",
-            check.__name__
-        )
-
         try:
 
-            result = check()
+            check_result = check()
 
             results.append(
-                result
+                check_result
             )
 
             logging.info(
-                "Résultat : %s",
-                result["status"]
-            )
-
-            logging.info(
-                "Détail : %s",
-                result["details"]
+                "%s : %s",
+                check_result["name"],
+                check_result["status"]
             )
 
         except Exception as exc:
 
             logging.exception(
-                "Erreur pendant %s",
+                "Erreur dans %s",
                 check.__name__
             )
 
-            results.append({
-
-                "name":
+            results.append(
+                result(
                     check.__name__,
-
-                "status":
                     "WARNING",
-
-                "details":
-                    f"Erreur : {exc}"
-
-            })
-
-    logging.info(
-        "=" * 70
-    )
-
-    logging.info(
-        "FIN DES CONTRÔLES"
-    )
-
-    logging.info(
-        "=" * 70
-    )
+                    str(exc),
+                    "Windows"
+                )
+            )
 
     return results
 
 
 # ============================================================
-# CALCUL DU SCORE
+# AUDIT LINUX
 # ============================================================
 
-def calculate_score(
+def run_linux_audit():
+
+    logging.info("=" * 70)
+    logging.info("AUDIT LINUX")
+    logging.info("=" * 70)
+
+    results = []
+
+    checks = [
+
+        linux_firewall,
+
+        linux_updates,
+
+        linux_logs,
+
+        linux_ssh_permissions,
+
+        linux_root_ssh_keys
+
+    ]
+
+    for check in checks:
+
+        try:
+
+            check_result = check()
+
+            if isinstance(
+                check_result,
+                list
+            ):
+
+                results.extend(
+                    check_result
+                )
+
+                for item in check_result:
+
+                    logging.info(
+                        "%s : %s",
+                        item["name"],
+                        item["status"]
+                    )
+
+            else:
+
+                results.append(
+                    check_result
+                )
+
+                logging.info(
+                    "%s : %s",
+                    check_result["name"],
+                    check_result["status"]
+                )
+
+        except Exception as exc:
+
+            logging.exception(
+                "Erreur dans %s",
+                check.__name__
+            )
+
+            results.append(
+                result(
+                    check.__name__,
+                    "WARNING",
+                    str(exc),
+                    "Linux"
+                )
+            )
+
+    # SSH
+    try:
+
+        ssh_results = (
+            linux_sshd_config()
+        )
+
+        results.extend(
+            ssh_results
+        )
+
+        for item in ssh_results:
+
+            logging.info(
+                "%s : %s",
+                item["name"],
+                item["status"]
+            )
+
+    except Exception as exc:
+
+        logging.exception(
+            "Erreur SSH"
+        )
+
+        results.append(
+            result(
+                "SSH",
+                "WARNING",
+                str(exc),
+                "Linux"
+            )
+        )
+
+    return results
+
+
+# ============================================================
+# AUDIT AUTRE OS
+# ============================================================
+
+def run_generic_audit():
+
+    logging.warning(
+        "Système non officiellement supporté : %s",
+        platform.system()
+    )
+
+    return [
+
+        result(
+            "Système d'exploitation",
+            "WARNING",
+            f"Système détecté : {platform.system()} ; "
+            "les contrôles spécifiques ne sont pas disponibles",
+            "Système"
+        )
+
+    ]
+
+
+# ============================================================
+# CALCUL STATISTIQUES
+# ============================================================
+
+def calculate_statistics(
     results
 ):
-    """
-    Calcule un score indicatif :
 
-        OK          = 100
-        WARNING     = 50
-        KO          = 0
-    """
+    ok = 0
 
-    if not results:
+    warning = 0
 
-        return 0
+    ko = 0
 
-    total = 0
+    na = 0
 
-    for result in results:
+    for item in results:
 
-        status = (
-            result["status"]
-        )
+        status = item["status"]
 
         if status == "OK":
 
-            total += 100
+            ok += 1
 
         elif status == "WARNING":
 
-            total += 50
+            warning += 1
 
         elif status == "KO":
 
-            total += 0
+            ko += 1
 
-    return round(
-        total /
-        len(results)
+        elif status == "N/A":
+
+            na += 1
+
+    applicable = (
+        ok +
+        warning +
+        ko
     )
 
+    if applicable:
 
-# ============================================================
-# GÉNÉRATION DU RAPPORT TXT
-# ============================================================
-
-def generate_text_report(
-    results,
-    system_info,
-    score,
-    output_file
-):
-    """
-    Génère le rapport texte.
-    """
-
-    logging.info(
-        "Génération du rapport TXT"
-    )
-
-    # --------------------------------------------------------
-    # Statistiques
-    # --------------------------------------------------------
-
-    ok_count = sum(
-
-        1
-
-        for result in results
-
-        if result["status"] == "OK"
-
-    )
-
-    warning_count = sum(
-
-        1
-
-        for result in results
-
-        if result["status"] == "WARNING"
-
-    )
-
-    ko_count = sum(
-
-        1
-
-        for result in results
-
-        if result["status"] == "KO"
-
-    )
-
-    # --------------------------------------------------------
-    # État global
-    # --------------------------------------------------------
-
-    if ko_count > 0:
-
-        global_status = (
-            "NON CONFORME"
+        score = round(
+            (
+                ok +
+                (warning * 0.5)
+            )
+            /
+            applicable
+            *
+            100
         )
 
-    elif warning_count > 0:
+    else:
 
-        global_status = (
-            "AVERTISSEMENT"
-        )
+        score = 0
+
+    if ko > 0:
+
+        global_status = "NON CONFORME"
+
+    elif warning > 0:
+
+        global_status = "AVERTISSEMENT"
 
     else:
 
         global_status = "OK"
 
-    # --------------------------------------------------------
-    # Rapport
-    # --------------------------------------------------------
+    return {
+
+        "total": len(results),
+
+        "ok": ok,
+
+        "warning": warning,
+
+        "ko": ko,
+
+        "na": na,
+
+        "score": score,
+
+        "global_status": global_status
+
+    }
+
+
+# ============================================================
+# RAPPORT TXT
+# ============================================================
+
+def generate_text_report(
+    results,
+    system_info,
+    statistics,
+    output_file
+):
 
     lines = []
 
     lines.append(
-        "=" * 70
+        "=" * 80
     )
 
     lines.append(
-        "AUDIT DE CONFORMITÉ SÉCURITÉ"
+        "AUDIT DE SÉCURITÉ"
     )
 
     lines.append(
-        "=" * 70
+        "=" * 80
     )
 
     lines.append("")
 
     lines.append(
-        "Date       : "
-        + datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        f"Date              : "
+        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
 
     lines.append(
-        "Serveur    : "
-        + system_info["hostname"]
+        f"Système           : "
+        f"{system_info['os']}"
     )
 
     lines.append(
-        "OS         : "
-        + system_info["os"]
+        f"Hostname           : "
+        f"{system_info['hostname']}"
     )
 
     lines.append(
-        "Noyau      : "
-        + system_info["kernel"]
+        f"Architecture       : "
+        f"{system_info['architecture']}"
+    )
+
+    lines.append(
+        f"Version            : "
+        f"{system_info['version']}"
     )
 
     lines.append("")
 
     lines.append(
-        "-" * 70
+        "-" * 80
     )
 
     lines.append(
-        "RÉSULTATS DES CONTRÔLES"
+        "RÉSULTATS"
     )
 
     lines.append(
-        "-" * 70
+        "-" * 80
     )
 
-    for index, result in enumerate(
+    for index, item in enumerate(
         results,
-        start=1
+        1
     ):
 
         lines.append("")
 
         lines.append(
-            f"[{index}] {result['name']}"
+            f"{index}. {item['name']}"
         )
 
         lines.append(
-            "    Résultat : "
-            + status_text(
-                result["status"]
-            )
+            f"   Catégorie : {item['category']}"
         )
 
         lines.append(
-            "    Détail   : "
-            + result["details"]
+            f"   Statut    : {status_text(item['status'])}"
+        )
+
+        lines.append(
+            f"   Détail    : {item['details']}"
         )
 
     lines.append("")
 
     lines.append(
-        "-" * 70
+        "-" * 80
     )
 
     lines.append(
@@ -1692,52 +2221,44 @@ def generate_text_report(
     )
 
     lines.append(
-        "-" * 70
+        "-" * 80
     )
 
     lines.append("")
 
     lines.append(
-        f"Contrôles réalisés : {len(results)}"
+        f"Contrôles       : {statistics['total']}"
     )
 
     lines.append(
-        f"OK                 : {ok_count}"
+        f"OK              : {statistics['ok']}"
     )
 
     lines.append(
-        f"Avertissements     : {warning_count}"
+        f"Avertissements  : {statistics['warning']}"
     )
 
     lines.append(
-        f"Non conformes      : {ko_count}"
+        f"Non conformes   : {statistics['ko']}"
     )
 
     lines.append(
-        f"Score indicatif    : {score}%"
+        f"Non applicables : {statistics['na']}"
     )
 
     lines.append(
-        f"État global        : {global_status}"
+        f"Score indicatif : {statistics['score']}%"
+    )
+
+    lines.append(
+        f"État global     : {statistics['global_status']}"
     )
 
     lines.append("")
 
     lines.append(
-        "=" * 70
+        "=" * 80
     )
-
-    lines.append(
-        "Rapport généré automatiquement"
-    )
-
-    lines.append(
-        "=" * 70
-    )
-
-    # --------------------------------------------------------
-    # Écriture
-    # --------------------------------------------------------
 
     output_file.write_text(
         "\n".join(lines),
@@ -1751,232 +2272,108 @@ def generate_text_report(
 
 
 # ============================================================
-# GÉNÉRATION DU RAPPORT HTML
+# RAPPORT HTML
 # ============================================================
 
 def generate_html_report(
     results,
     system_info,
-    score,
+    statistics,
     output_file
 ):
-    """
-    Génère le rapport HTML à partir du template :
-
-        mon_projet/base/rapport_conformite.html
-
-    Le fichier HTML de base n'est PAS recréé par Python.
-
-    Le script lit le fichier existant, remplace les
-    variables et crée le rapport final dans :
-
-        mon_projet/rapports/audi_securite/
-    """
 
     logging.info(
-        "Génération du rapport HTML"
-    )
-
-    logging.info(
-        "Recherche du template : %s",
+        "Lecture du template HTML : %s",
         BASE_HTML
     )
-
-    # ========================================================
-    # VÉRIFICATION DU TEMPLATE
-    # ========================================================
 
     if not BASE_DIR.exists():
 
         raise FileNotFoundError(
-
-            "Le dossier base est introuvable : "
-            f"{BASE_DIR}"
-
+            f"Dossier base introuvable : {BASE_DIR}"
         )
 
     if not BASE_HTML.exists():
 
         raise FileNotFoundError(
-
-            "Le fichier rapport_conformite.html "
-            "est introuvable : "
-            f"{BASE_HTML}"
-
+            f"Fichier rapport_conformite.html "
+            f"introuvable : {BASE_HTML}"
         )
 
     if not BASE_HTML.is_file():
 
         raise FileNotFoundError(
-
-            "rapport_conformite.html n'est pas "
-            f"un fichier : {BASE_HTML}"
-
+            f"{BASE_HTML} n'est pas un fichier"
         )
 
-    logging.info(
-        "Template HTML trouvé : %s",
-        BASE_HTML
+    template = BASE_HTML.read_text(
+        encoding="utf-8"
     )
-
-    # ========================================================
-    # LECTURE DU TEMPLATE
-    # ========================================================
-
-    try:
-
-        template = (
-            BASE_HTML.read_text(
-                encoding="utf-8"
-            )
-        )
-
-    except Exception as exc:
-
-        logging.exception(
-            "Impossible de lire le template HTML"
-        )
-
-        raise RuntimeError(
-
-            "Impossible de lire "
-            f"{BASE_HTML} : {exc}"
-
-        ) from exc
-
-    # ========================================================
-    # STATISTIQUES
-    # ========================================================
-
-    ok_count = sum(
-
-        1
-
-        for result in results
-
-        if result["status"] == "OK"
-
-    )
-
-    warning_count = sum(
-
-        1
-
-        for result in results
-
-        if result["status"] == "WARNING"
-
-    )
-
-    ko_count = sum(
-
-        1
-
-        for result in results
-
-        if result["status"] == "KO"
-
-    )
-
-    # ========================================================
-    # ÉTAT GLOBAL
-    # ========================================================
-
-    if ko_count > 0:
-
-        global_status = (
-            "NON CONFORME"
-        )
-
-        global_color = (
-            "#dc3545"
-        )
-
-    elif warning_count > 0:
-
-        global_status = (
-            "AVERTISSEMENT"
-        )
-
-        global_color = (
-            "#f0ad00"
-        )
-
-    else:
-
-        global_status = (
-            "OK"
-        )
-
-        global_color = (
-            "#198754"
-        )
-
-    # ========================================================
-    # LIGNES DU TABLEAU
-    # ========================================================
 
     rows = []
 
-    for index, result in enumerate(
+    for index, item in enumerate(
         results,
-        start=1
+        1
     ):
 
         color = status_color(
-            result["status"]
+            item["status"]
         )
 
         status = status_text(
-            result["status"]
+            item["status"]
         )
-
-        row = f"""
-<tr>
-
-    <td>
-        {index}
-    </td>
-
-    <td>
-        {html.escape(
-            str(result["name"])
-        )}
-    </td>
-
-    <td>
-
-        <span
-            class="badge"
-            style="background-color:{color}"
-        >
-            {html.escape(
-                str(status)
-            )}
-        </span>
-
-    </td>
-
-    <td>
-        {html.escape(
-            str(result["details"])
-        )}
-    </td>
-
-</tr>
-"""
 
         rows.append(
-            row
+            f"""
+<tr>
+    <td>{index}</td>
+
+    <td>
+        {html.escape(item["category"])}
+    </td>
+
+    <td>
+        {html.escape(item["name"])}
+    </td>
+
+    <td>
+        <span
+            style="
+                display:inline-block;
+                padding:5px 10px;
+                border-radius:5px;
+                color:#fff;
+                background:{color};
+            "
+        >
+            {html.escape(status)}
+        </span>
+    </td>
+
+    <td>
+        {html.escape(item["details"])}
+    </td>
+</tr>
+"""
         )
 
-    results_rows = (
-        "\n".join(rows)
+    results_rows = "\n".join(
+        rows
     )
 
-    # ========================================================
-    # VARIABLES DU TEMPLATE
-    # ========================================================
+    if statistics["global_status"] == "OK":
+
+        global_color = "#198754"
+
+    elif statistics["global_status"] == "AVERTISSEMENT":
+
+        global_color = "#f0ad00"
+
+    else:
+
+        global_color = "#dc3545"
 
     variables = {
 
@@ -1984,108 +2381,89 @@ def generate_html_report(
             "Rapport de conformité sécurité",
 
         "{{SUBTITLE}}":
-            "Serveur Linux - "
-            "Checklist simplifiée sécurité",
-
-        "{{HOSTNAME}}":
-            html.escape(
-                str(
-                    system_info["hostname"]
-                )
-            ),
-
-        "{{OS}}":
-            html.escape(
-                str(
-                    system_info["os"]
-                )
-            ),
-
-        "{{KERNEL}}":
-            html.escape(
-                str(
-                    system_info["kernel"]
-                )
-            ),
+            "Audit automatique Windows / Linux",
 
         "{{DATE}}":
             datetime.now().strftime(
                 "%Y-%m-%d %H:%M:%S"
             ),
 
-        "{{GLOBAL_COLOR}}":
-            global_color,
+        "{{HOSTNAME}}":
+            html.escape(
+                system_info["hostname"]
+            ),
+
+        "{{OS}}":
+            html.escape(
+                system_info["os"]
+            ),
+
+        "{{VERSION}}":
+            html.escape(
+                system_info["version"]
+            ),
+
+        "{{ARCHITECTURE}}":
+            html.escape(
+                system_info["architecture"]
+            ),
 
         "{{GLOBAL_STATUS}}":
             html.escape(
-                global_status
+                statistics["global_status"]
             ),
 
+        "{{GLOBAL_COLOR}}":
+            global_color,
+
         "{{SCORE}}":
-            str(score),
+            str(
+                statistics["score"]
+            ),
+
+        "{{TOTAL}}":
+            str(
+                statistics["total"]
+            ),
 
         "{{OK_COUNT}}":
-            str(ok_count),
+            str(
+                statistics["ok"]
+            ),
 
         "{{WARNING_COUNT}}":
-            str(warning_count),
+            str(
+                statistics["warning"]
+            ),
 
         "{{KO_COUNT}}":
-            str(ko_count),
+            str(
+                statistics["ko"]
+            ),
+
+        "{{NA_COUNT}}":
+            str(
+                statistics["na"]
+            ),
 
         "{{RESULTS_ROWS}}":
             results_rows
 
     }
 
-    # ========================================================
-    # REMPLACEMENT DES VARIABLES
-    # ========================================================
-
     report = template
 
-    for variable, value in (
-        variables.items()
-    ):
-
-        if variable not in report:
-
-            logging.warning(
-                "Variable absente du template : %s",
-                variable
-            )
+    for variable, value in variables.items():
 
         report = report.replace(
             variable,
             value
         )
 
-    # ========================================================
-    # ÉCRITURE DU RAPPORT FINAL
-    # ========================================================
-
-    try:
-
-        output_file.write_text(
-
-            report,
-
-            encoding="utf-8"
-
-        )
-
-    except Exception as exc:
-
-        logging.exception(
-            "Impossible d'écrire le rapport HTML"
-        )
-
-        raise RuntimeError(
-
-            "Impossible d'écrire "
-            f"{output_file} : {exc}"
-
-        ) from exc
+    output_file.write_text(
+        report,
+        encoding="utf-8"
+    )
 
     logging.info(
         "Rapport HTML créé : %s",
@@ -2094,178 +2472,104 @@ def generate_html_report(
 
 
 # ============================================================
-# PRÉPARATION DES DOSSIERS
+# VÉRIFICATION ENVIRONNEMENT
 # ============================================================
 
-def prepare_directories():
-    """
-    Vérifie et crée les dossiers nécessaires.
-    """
+def prepare_environment():
 
     logging.info(
-        "Préparation des répertoires"
+        "Préparation de l'environnement"
     )
-
-    # --------------------------------------------------------
-    # Logs
-    # --------------------------------------------------------
 
     LOG_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    # --------------------------------------------------------
-    # Rapports
-    # --------------------------------------------------------
-
     REPORT_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    # --------------------------------------------------------
-    # Base
-    # --------------------------------------------------------
-
     if not BASE_DIR.exists():
 
         raise FileNotFoundError(
-
             "Le dossier base est introuvable : "
             f"{BASE_DIR}"
-
         )
 
     if not BASE_HTML.exists():
 
         raise FileNotFoundError(
-
-            "Le template HTML est introuvable : "
+            "Le fichier rapport_conformite.html "
+            "est introuvable : "
             f"{BASE_HTML}"
-
         )
 
     logging.info(
-        "Dossier base : %s",
-        BASE_DIR
-    )
-
-    logging.info(
-        "Template HTML : %s",
+        "Template HTML validé : %s",
         BASE_HTML
-    )
-
-    logging.info(
-        "Dossier logs : %s",
-        LOG_DIR
-    )
-
-    logging.info(
-        "Dossier rapports : %s",
-        REPORT_DIR
     )
 
 
 # ============================================================
-# AFFICHAGE DU RÉSUMÉ
+# AFFICHAGE TERMINAL
 # ============================================================
 
 def display_summary(
     results,
-    score,
-    text_file,
+    statistics,
+    txt_file,
     html_file,
     log_file
 ):
-    """
-    Affiche le résumé dans le terminal.
-    """
 
-    ok_count = sum(
+    print()
 
-        1
-
-        for result in results
-
-        if result["status"] == "OK"
-
+    print(
+        "=" * 80
     )
 
-    warning_count = sum(
-
-        1
-
-        for result in results
-
-        if result["status"] == "WARNING"
-
+    print(
+        "AUDIT DE SÉCURITÉ TERMINÉ"
     )
 
-    ko_count = sum(
-
-        1
-
-        for result in results
-
-        if result["status"] == "KO"
-
+    print(
+        "=" * 80
     )
 
     print()
 
     print(
-        "=" * 70
+        f"État global     : "
+        f"{statistics['global_status']}"
     )
 
     print(
-        "RÉSULTAT DE L'AUDIT"
-    )
-
-    print(
-        "=" * 70
+        f"Score indicatif : "
+        f"{statistics['score']}%"
     )
 
     print()
 
-    for result in results:
-
-        print(
-
-            f"{result['status']:8} | "
-            f"{result['name']} | "
-            f"{result['details']}"
-
-        )
-
-    print()
-
     print(
-        "-" * 70
+        f"OK              : "
+        f"{statistics['ok']}"
     )
 
     print(
-        f"Contrôles réalisés : {len(results)}"
+        f"Avertissements  : "
+        f"{statistics['warning']}"
     )
 
     print(
-        f"OK                 : {ok_count}"
+        f"Non conformes   : "
+        f"{statistics['ko']}"
     )
 
     print(
-        f"Avertissements     : {warning_count}"
-    )
-
-    print(
-        f"Non conformes      : {ko_count}"
-    )
-
-    print(
-        f"Score indicatif    : {score}%"
-    )
-
-    print(
-        "-" * 70
+        f"Non applicables : "
+        f"{statistics['na']}"
     )
 
     print()
@@ -2274,58 +2578,51 @@ def display_summary(
         "Fichiers générés :"
     )
 
+    print()
+
     print(
-        f"  TXT  : {text_file}"
+        f"TXT : {txt_file}"
     )
 
     print(
-        f"  HTML : {html_file}"
+        f"HTML: {html_file}"
     )
 
     print(
-        f"  LOG  : {log_file}"
+        f"LOG : {log_file}"
     )
 
     print()
 
     print(
-        "=" * 70
+        "=" * 80
     )
 
 
 # ============================================================
-# FONCTION PRINCIPALE
+# MAIN
 # ============================================================
 
 def main():
-    """
-    Fonction principale du programme.
-    """
-
-    # --------------------------------------------------------
-    # Initialisation logging
-    # --------------------------------------------------------
 
     log_file = setup_logging()
 
     try:
 
         # ----------------------------------------------------
-        # Préparation
+        # Vérification environnement
         # ----------------------------------------------------
 
-        prepare_directories()
+        prepare_environment()
 
         # ----------------------------------------------------
         # Informations système
         # ----------------------------------------------------
 
-        system_info = (
-            get_system_info()
-        )
+        system_info = get_system_info()
 
         logging.info(
-            "Serveur : %s",
+            "Hostname : %s",
             system_info["hostname"]
         )
 
@@ -2335,76 +2632,80 @@ def main():
         )
 
         logging.info(
-            "Kernel : %s",
-            system_info["kernel"]
+            "Architecture : %s",
+            system_info["architecture"]
+        )
+
+        # ----------------------------------------------------
+        # Détection OS
+        # ----------------------------------------------------
+
+        if IS_WINDOWS:
+
+            results = run_windows_audit()
+
+        elif IS_LINUX:
+
+            results = run_linux_audit()
+
+        else:
+
+            results = run_generic_audit()
+
+        # ----------------------------------------------------
+        # Statistiques
+        # ----------------------------------------------------
+
+        statistics = calculate_statistics(
+            results
+        )
+
+        logging.info(
+            "Nombre de contrôles : %d",
+            statistics["total"]
+        )
+
+        logging.info(
+            "OK : %d",
+            statistics["ok"]
+        )
+
+        logging.info(
+            "WARNING : %d",
+            statistics["warning"]
+        )
+
+        logging.info(
+            "KO : %d",
+            statistics["ko"]
+        )
+
+        logging.info(
+            "N/A : %d",
+            statistics["na"]
+        )
+
+        logging.info(
+            "Score : %d%%",
+            statistics["score"]
         )
 
         # ----------------------------------------------------
         # Nom des fichiers
         # ----------------------------------------------------
 
-        date_string = (
-            datetime.now()
-            .strftime(
-                "%Y-%m-%d"
-            )
+        timestamp = datetime.now().strftime(
+            "%Y-%m-%d_%H-%M-%S"
         )
 
-        # ----------------------------------------------------
-        # Rapport TXT
-        # ----------------------------------------------------
-
-        text_file = (
-
+        txt_file = (
             REPORT_DIR /
-
-            f"audit_securite_{date_string}.txt"
-
+            f"audit_securite_{timestamp}.txt"
         )
-
-        # ----------------------------------------------------
-        # Rapport HTML
-        # ----------------------------------------------------
 
         html_file = (
-
             REPORT_DIR /
-
-            "rapport_conformite.html"
-
-        )
-
-        logging.info(
-            "Fichier rapport TXT : %s",
-            text_file
-        )
-
-        logging.info(
-            "Fichier rapport HTML : %s",
-            html_file
-        )
-
-        # ----------------------------------------------------
-        # Audit
-        # ----------------------------------------------------
-
-        results = (
-            run_audit()
-        )
-
-        # ----------------------------------------------------
-        # Score
-        # ----------------------------------------------------
-
-        score = (
-            calculate_score(
-                results
-            )
-        )
-
-        logging.info(
-            "Score indicatif : %d%%",
-            score
+            f"rapport_conformite_{timestamp}.html"
         )
 
         # ----------------------------------------------------
@@ -2412,15 +2713,10 @@ def main():
         # ----------------------------------------------------
 
         generate_text_report(
-
             results,
-
             system_info,
-
-            score,
-
-            text_file
-
+            statistics,
+            txt_file
         )
 
         # ----------------------------------------------------
@@ -2428,15 +2724,10 @@ def main():
         # ----------------------------------------------------
 
         generate_html_report(
-
             results,
-
             system_info,
-
-            score,
-
+            statistics,
             html_file
-
         )
 
         # ----------------------------------------------------
@@ -2444,29 +2735,19 @@ def main():
         # ----------------------------------------------------
 
         display_summary(
-
             results,
-
-            score,
-
-            text_file,
-
+            statistics,
+            txt_file,
             html_file,
-
             log_file
-
         )
-
-        # ----------------------------------------------------
-        # Fin
-        # ----------------------------------------------------
 
         logging.info(
             "=" * 70
         )
 
         logging.info(
-            "AUDIT TERMINÉ AVEC SUCCÈS"
+            "AUDIT TERMINÉ"
         )
 
         logging.info(
@@ -2481,13 +2762,8 @@ def main():
             "Audit interrompu par l'utilisateur"
         )
 
-        print()
         print(
-            "[!] Audit interrompu."
-        )
-
-        print(
-            f"[!] Log : {log_file}"
+            "\nAudit interrompu."
         )
 
         return 130
@@ -2500,16 +2776,17 @@ def main():
 
         print()
         print(
-            "[ERREUR] L'audit n'a pas pu "
-            "être terminé."
+            "ERREUR :",
+            exc
+        )
+
+        print()
+        print(
+            "Consulte le fichier log :"
         )
 
         print(
-            f"Détail : {exc}"
-        )
-
-        print(
-            f"Log : {log_file}"
+            log_file
         )
 
         return 1
