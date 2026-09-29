@@ -1,0 +1,8 @@
+logs/*
+rapport/analyse_logs/*
+rapport/audit_securite/*
+rapport/inventaire/*
+rapport/rgpd/*
+rapport/sauvegarde/*
+rapport/supervision/*
+*.log
