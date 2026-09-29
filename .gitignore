@@ -1,8 +1,8 @@
 logs/*
-rapport/analyse_logs/*
-rapport/audit_securite/*
-rapport/inventaire/*
-rapport/rgpd/*
-rapport/sauvegarde/*
-rapport/supervision/*
+../analyse_logs/*
+../audit_securite/*
+../rapports/inventaire/*
+../rapports/rgpd/*
+../rapports/sauvegarde/*
+../rapports/supervision/*
 *.log
