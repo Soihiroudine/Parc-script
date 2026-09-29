@@ -16,8 +16,8 @@ from datetime import datetime
 
 RESEAU = "192.168.10.0/24"
 
-DOSSIER_RAPPORTS = "rapports/inventaire"
-DOSSIER_LOGS = "logs"
+DOSSIER_RAPPORTS = "Parc-script/rapports/inventaire"
+DOSSIER_LOGS = "Parc-script/logs"
 
 DATE = datetime.now().strftime("%Y-%m-%d")
 
