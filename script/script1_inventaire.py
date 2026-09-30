@@ -9,7 +9,7 @@ import socket
 import subprocess
 from datetime import datetime
 from pathlib import Path
-import psutil
+import re
 
 
 
@@ -19,21 +19,25 @@ import psutil
 
 def get_network_cidr():
     """Récupère le CIDR du réseau local en utilisant les interfaces réseau."""
-    for interface, addresses in psutil.net_if_addrs().items():
-        for address in addresses:
-            if address.family == 2:  # IPv4
-                ip = address.address
-                mask = address.netmask
+    output = subprocess.check_output(
+        ["ip", "-o", "-4", "addr", "show"],
+        text=True
+    )
 
-                if ip.startswith("127."):
-                    continue
+    for line in output.splitlines():
+        match = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)", line)
 
-                network = ipaddress.IPv4Network(
-                    f"{ip}/{mask}",
-                    strict=False
+        if match:
+            ip = match.group(1)
+            prefix = match.group(2)
+
+            if not ip.startswith("127."):
+                return str(
+                    ipaddress.ip_network(
+                        f"{ip}/{prefix}",
+                        strict=False
+                    )
                 )
-
-                return str(network)
 
     return None
 
