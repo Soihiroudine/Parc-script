@@ -9,18 +9,43 @@ import socket
 import subprocess
 from datetime import datetime
 from pathlib import Path
+import psutil
+
 
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-RESEAU = "192.168.10.0/24" # À modifier selon votre réseau
+def get_network_cidr():
+    """Récupère le CIDR du réseau local en utilisant les interfaces réseau."""
+    for interface, addresses in psutil.net_if_addrs().items():
+        for address in addresses:
+            if address.family == 2:  # IPv4
+                ip = address.address
+                mask = address.netmask
 
+                if ip.startswith("127."):
+                    continue
+
+                network = ipaddress.IPv4Network(
+                    f"{ip}/{mask}",
+                    strict=False
+                )
+
+                return str(network)
+
+    return None
+
+# Obtenir le CIDR du réseau local
+RESEAU = get_network_cidr()
+
+# Définition des chemins pour les rapports et les logs
 PROJET = Path(__file__).resolve().parent.parent
 DOSSIER_RAPPORTS = PROJET / "rapports" / "inventaire"
 DOSSIER_LOGS = PROJET / "logs"
 
+# Date actuelle pour nommer les fichiers
 DATE = datetime.now().strftime("%Y-%m-%d")
 
 FICHIER_CSV = os.path.join(
