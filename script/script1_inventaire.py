@@ -9,7 +9,39 @@ import socket
 import subprocess
 from datetime import datetime
 from pathlib import Path
-import re
+import argparse
+
+# ============================================================
+# EXEMPLES D'UTILISATION
+# ============================================================
+#
+# Analyse globale du réseau :
+#
+#   python ./script/script.py
+#
+#
+# Analyse d'une plage précise :
+#
+#   python ./script/script.py --debut 192.168.1.10 --fin 192.168.1.50
+#
+#
+# Afficher l'aide :
+#
+#   python ./script/script.py --help
+#
+#
+# Si --debut et --fin ne sont pas renseignés :
+#   -> le programme analyse le réseau RESEAU
+#
+#
+# Si --debut et --fin sont renseignés :
+#   -> le programme analyse uniquement la plage indiquée
+#
+#
+# --debut et --fin doivent être utilisés ensemble.
+#
+# ============================================================
+
 
 # ============================================================
 # CONFIGURATION
@@ -56,6 +88,70 @@ FICHIER_LOG = os.path.join(
     DOSSIER_LOGS,
     "log_scan.txt"
 )
+
+
+# ============================================================
+# ARGUMENTS
+# ============================================================
+
+def recuperer_arguments():
+    """
+    Récupère les arguments --debut et --fin.
+
+    Les deux arguments sont optionnels.
+
+    Aucun argument :
+        -> analyse globale du réseau RESEAU
+
+    --debut + --fin :
+        -> analyse de la plage indiquée
+    """
+
+    parser = argparse.ArgumentParser(
+        description="Analyse du réseau"
+    )
+
+    parser.add_argument(
+        "--debut",
+        help="Adresse IP de début"
+    )
+
+    parser.add_argument(
+        "--fin",
+        help="Adresse IP de fin"
+    )
+
+    args = parser.parse_args()
+
+    # Aucun argument :
+    # on utilisera RESEAU
+    if args.debut is None and args.fin is None:
+        return None, None
+
+    # Un seul des deux arguments
+    if args.debut is None or args.fin is None:
+        parser.error(
+            "--debut et --fin doivent être utilisés ensemble."
+        )
+
+    # Vérification des adresses IP
+    try:
+        ip_debut = ipaddress.IPv4Address(args.debut)
+        ip_fin = ipaddress.IPv4Address(args.fin)
+
+    except ipaddress.AddressValueError as erreur:
+        parser.error(
+            f"Adresse IP invalide : {erreur}"
+        )
+
+    # Vérification de l'ordre
+    if ip_debut > ip_fin:
+        parser.error(
+            "L'adresse IP de début doit être "
+            "inférieure ou égale à l'adresse IP de fin."
+        )
+
+    return ip_debut, ip_fin
 
 
 # ============================================================
@@ -350,6 +446,86 @@ def scanner_reseau(reseau):
 
 
 # ============================================================
+# SCAN D'UNE PLAGE D'IP
+# ============================================================
+
+def scanner_plage(ip_debut, ip_fin):
+    """Parcourt une plage d'adresses IP."""
+
+    resultats = []
+
+    print()
+    print("=" * 60)
+    print("       INVENTAIRE AUTOMATIQUE DU PARC")
+    print("=" * 60)
+    print()
+    print(
+        f"Plage analysée : {ip_debut} -> {ip_fin}"
+    )
+    print()
+
+    logging.info(
+        f"Début du scan de la plage "
+        f"{ip_debut} -> {ip_fin}"
+    )
+
+    ip = ip_debut
+
+    while ip <= ip_fin:
+
+        print(
+            f"[SCAN] {ip}",
+            end="",
+            flush=True
+        )
+
+        actif = scanner_ip(ip)
+
+        if actif:
+
+            print(" -> ACTIF")
+
+            hostname = recuperer_hostname(ip)
+            os_detecte = recuperer_os(ip)
+
+            machine = {
+                "IP": str(ip),
+                "Hostname": hostname,
+                "OS": os_detecte,
+                "Statut": "Actif"
+            }
+
+            resultats.append(machine)
+
+            logging.info(
+                f"Machine active : {ip} | "
+                f"Hostname : {hostname} | "
+                f"OS : {os_detecte}"
+            )
+
+        else:
+
+            print(" -> INACTIF")
+
+            machine = {
+                "IP": str(ip),
+                "Hostname": "N/A",
+                "OS": "N/A",
+                "Statut": "Inactif"
+            }
+
+            resultats.append(machine)
+
+        ip += 1
+
+    logging.info(
+        f"Fin du scan. {len(resultats)} adresses analysées."
+    )
+
+    return resultats
+
+
+# ============================================================
 # RESUME
 # ============================================================
 
@@ -395,18 +571,54 @@ def main():
     logging.info("Démarrage du script d'inventaire")
     logging.info("==========================================")
 
-    resultats = scanner_reseau(RESEAU)
+    # Récupération des arguments
+    ip_debut, ip_fin = recuperer_arguments()
 
-    if resultats:
-        generer_csv(resultats)
-        afficher_resume(resultats)
+    # --------------------------------------------------------
+    # Aucun argument :
+    # analyse globale de RESEAU
+    # --------------------------------------------------------
+
+    if ip_debut is None and ip_fin is None:
+
+        resultats = scanner_reseau(
+            RESEAU
+        )
+
+    # --------------------------------------------------------
+    # --debut et --fin :
+    # analyse de la plage demandée
+    # --------------------------------------------------------
 
     else:
+
+        resultats = scanner_plage(
+            ip_debut,
+            ip_fin
+        )
+
+    if resultats:
+
+        generer_csv(
+            resultats
+        )
+
+        afficher_resume(
+            resultats
+        )
+
+    else:
+
         print()
         print("[ERREUR] Aucun résultat.")
-        logging.error("Aucun résultat obtenu.")
 
-    logging.info("Fin du script.")
+        logging.error(
+            "Aucun résultat obtenu."
+        )
+
+    logging.info(
+        "Fin du script."
+    )
 
 
 # ============================================================
