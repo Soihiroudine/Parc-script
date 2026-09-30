@@ -11,38 +11,33 @@ from datetime import datetime
 from pathlib import Path
 import re
 
-
-
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-def get_network_cidr():
-    """Récupère le CIDR du réseau local en utilisant les interfaces réseau."""
-    output = subprocess.check_output(
-        ["ip", "-o", "-4", "addr", "show"],
-        text=True
+def get_local_ip():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    try:
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+    finally:
+        sock.close()
+
+
+def get_network_cidr(ip, netmask):
+    return str(
+        ipaddress.IPv4Network(f"{ip}/{netmask}", strict=False)
     )
 
-    for line in output.splitlines():
-        match = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)", line)
 
-        if match:
-            ip = match.group(1)
-            prefix = match.group(2)
+ip = get_local_ip()
 
-            if not ip.startswith("127."):
-                return str(
-                    ipaddress.ip_network(
-                        f"{ip}/{prefix}",
-                        strict=False
-                    )
-                )
-
-    return None
+# Le masque doit être obtenu autrement
+netmask = "255.255.255.0"
 
 # Obtenir le CIDR du réseau local
-RESEAU = get_network_cidr()
+RESEAU = get_network_cidr(ip, netmask)
 
 # Définition des chemins pour les rapports et les logs
 PROJET = Path(__file__).resolve().parent.parent
