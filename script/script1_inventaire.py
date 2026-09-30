@@ -8,6 +8,7 @@ import platform
 import socket
 import subprocess
 from datetime import datetime
+from pathlib import Path
 
 
 # ============================================================
@@ -16,8 +17,9 @@ from datetime import datetime
 
 RESEAU = "192.168.10.0/24" # À modifier selon votre réseau
 
-DOSSIER_RAPPORTS = "../rapports/inventaire"
-DOSSIER_LOGS = "../logs"
+PROJET = Path(__file__).resolve().parent.parent
+DOSSIER_RAPPORTS = PROJET / "rapports" / "inventaire"
+DOSSIER_LOGS = PROJET / "logs"
 
 DATE = datetime.now().strftime("%Y-%m-%d")
 
