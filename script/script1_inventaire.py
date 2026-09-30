@@ -8,17 +8,43 @@ import platform
 import socket
 import subprocess
 from datetime import datetime
-
+from pathlib import Path
+import re
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-RESEAU = "192.168.10.0/24" # À modifier selon votre réseau
+def get_local_ip():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-DOSSIER_RAPPORTS = "Parc-script/rapports/inventaire"
-DOSSIER_LOGS = "Parc-script/logs"
+    try:
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+    finally:
+        sock.close()
 
+
+def get_network_cidr(ip, netmask):
+    return str(
+        ipaddress.IPv4Network(f"{ip}/{netmask}", strict=False)
+    )
+
+
+ip = get_local_ip()
+
+# Le masque doit être obtenu autrement
+netmask = "255.255.255.0"
+
+# Obtenir le CIDR du réseau local
+RESEAU = get_network_cidr(ip, netmask)
+
+# Définition des chemins pour les rapports et les logs
+PROJET = Path(__file__).resolve().parent.parent
+DOSSIER_RAPPORTS = PROJET / "rapports" / "inventaire"
+DOSSIER_LOGS = PROJET / "logs"
+
+# Date actuelle pour nommer les fichiers
 DATE = datetime.now().strftime("%Y-%m-%d")
 
 FICHIER_CSV = os.path.join(
