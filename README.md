@@ -130,19 +130,19 @@ Utilisation :
 Copie d'un dossier vers un autre dossier
 
 ```bash
-    python script3_sauvegarde.py --source ./donnees --destination ./sauvegardes
+    python ./script/script3_sauvegarde.py --source ./donnees --destination ./sauvegardes
 ```
 
 Copie d'un dossier vers un autre dossier au format __zip__
 
 ```shell
-    python script3_sauvegarde.py --source ./donnees --destination ./sauvegardes --zip
+    python ./script/script3_sauvegarde.py --source ./donnees --destination ./sauvegardes --zip
 ```
 
 Copie d'un dossier vers un autre dossier tous les n temps
 
 ```shell
-    python script3_sauvegarde.py --source ./donnees --destination ./sauvegardes --daemon
+    python ./script/script3_sauvegarde.py --source ./donnees --destination ./sauvegardes --daemon
 ```
 
 Pour pouvoir utilisé le script dans linux remplacé `python` à `python3`
@@ -182,12 +182,12 @@ Parc-script/
 
 Exemples :
 ```shell
-  python script/script4_supervision.py                      # services de SERVICES_A_SURVEILLER
-  python script/script4_supervision.py --auto               # + ports découverts automatiquement
-  python script/script4_supervision.py -s "Web=127.0.0.1:8080" -s "DB=127.0.0.1:3306" -s "DNS=8.8.8.8:53"
+  python ./script/script4_supervision.py                      # services de SERVICES_A_SURVEILLER
+  python ./script/script4_supervision.py --auto               # + ports découverts automatiquement
+  python ./script/script4_supervision.py -s "Web=127.0.0.1:8080" -s "DB=127.0.0.1:3306" -s "DNS=8.8.8.8:53"
   # -s 
-  python script/script4_supervision.py --intervalle 5 --duree 60   # test rapide d'une minute
-  python script/script4_supervision.py --email              # active les alertes e-mail
+  python ./script/script4_supervision.py --intervalle 5 --duree 60   # test rapide d'une minute
+  python ./script/script4_supervision.py --email              # active les alertes e-mail
 
 ```
 
@@ -195,3 +195,88 @@ Arrêt : `Ctrl+C` (le rapport SLA est alors finalisé).
 
 Pour une utilisation en Linux, remplacer `python` par `python3`
 
+### Script5_analyse_logs
+
+S5 - Analyse de logs et détection d'anomalies
+Fichier : script5_analyse_logs.py
+
+Ce que fait le script :
+  - Lit un fichier de log système (auth.log, syslog ou log simulé)
+  - Compte les tentatives de connexion échouées par IP source
+  - Identifie les IP dépassant un seuil (> 5 échecs en 10 minutes)
+  - Détecte les connexions réussies hors horaires autorisés (avant 6h / après 22h)
+  - Génère un rapport d'anomalies, un CSV des IP suspectes et (bonus)
+    un script de règles iptables pour bloquer les IP critiques
+
+Fichiers générés (dans rapport/analyse_logs/) :
+  - rapport_anomalies_AAAA-MM-JJ.txt
+  - ip_suspectes.csv
+  - regles_firewall.sh
+
+Usage :
+
+```bash
+  python ./script/script5_analyse_logs.py                        # logs/auth.log par défaut
+  python ./script/script5_analyse_logs.py -l logs/auth.log
+  python ./script/script5_analyse_logs.py --generer-demo         # log simulé avec l'IP réelle de cette machine
+  python ./script/script5_analyse_logs.py --generer-demo --scan-reseau   # + IP trouvées par ping dans le réseau local
+```
+
+Pour une utilisation en Linux, remplacer `python` par `python3`
+
+
+### script6_rgpd
+
+S6 - Rapport de conformité RGPD automatisé
+Fichier : script6_rgpd.py
+
+Ce que fait le script :
+  - Charge un registre des traitements simplifié depuis un fichier JSON
+  - Pour chaque traitement, vérifie : base légale, durée de conservation,
+    responsable désigné
+  - Calcule un score de conformité global (en %)
+  - Identifie les traitements non conformes avec leur niveau de risque
+  - Génère un rapport structuré avec les actions correctives recommandées
+
+Niveau avancé :
+  - Rapport HTML avec graphique de conformité par catégorie
+  - Actions correctives priorisées par niveau de risque (CNIL)
+  - Brouillon de notification CNIL si une violation de données est détectée
+
+Fichiers générés (dans rapport/rgpd/) :
+  - rapport_rgpd_AAAA-MM-JJ.txt
+  - rapport_rgpd.html
+  - notification_cnil_draft.txt (uniquement si violation détectée)
+
+Lien avec le projet : conformité RGPD (EF05, EF06) et plan de traitement des
+données passagers défini dans le CDC.
+
+Usage :
+
+```bash
+  python ./script/script6_rgpd.py                         # lit script/registre_traitements.json
+  python ./script/script6_rgpd.py -r mon_registre.json
+  python ./script/script6_rgpd.py --generer-demo          # crée un registre d'exemple puis l'analyse
+```
+
+Format du JSON (liste de traitements) :
+
+```json
+  {
+    "organisme": "Aéroport ...",
+    "traitements": [
+      {
+        "id": "T01",
+        "nom": "Enregistrement des passagers",
+        "categorie": "Données passagers",
+        "base_legale": "contrat",
+        "duree_conservation": "24 mois",
+        "responsable": "Direction exploitation",
+        "donnees_sensibles": false,          (optionnel)
+        "niveau_risque": "élevé",            (optionnel, sinon calculé)
+        "violation_detectee": false,         (optionnel)
+        "details_violation": "..."           (optionnel)
+      }
+    ]
+  }
+```
