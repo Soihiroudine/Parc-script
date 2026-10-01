@@ -22,11 +22,11 @@ Parc-script/
 ```
 
 Les dossiers de notre projet
-- Base : On y trouve les fichiers qui seront utilisé pour la création de rapport
-- logs : Les fichiers logs de chaque script
-- rapport : on y retrouve les résulthats des scripts
-- Script : Le dossier ou se trouve les script a executer
-- test : On dossier pour les tests divère
+- __Base__ : On y trouve les fichiers qui seront utilisé pour la création de rapport
+- __logs__ : Les fichiers logs de chaque script
+- __rapport__ : on y retrouve les résulthats des scripts
+- __Script__ : Le dossier ou se trouve les script a executer
+- __test__ : On dossier pour les tests divère
 
 ## Les scripts
 
