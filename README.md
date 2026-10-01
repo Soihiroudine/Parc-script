@@ -66,6 +66,7 @@ Analyse d'une plage précise :
 
 - `--debut` et `--fin` doivent être utilisés ensemble.
 
+---
 
 ### 2.Script2_audit_securite
 
@@ -109,6 +110,8 @@ Lancement du script
 python ./script/script2_audit_securite.py
 ```
 
+---
+
 ### 3.Script3_sauvegarde
 
 S3 - Sauvegarde automatisée avec vérification d'intégrité
@@ -146,6 +149,8 @@ Copie d'un dossier vers un autre dossier tous les n temps
 ```
 
 Pour pouvoir utilisé le script dans linux remplacé `python` à `python3`
+
+---
 
 ### 4.Script4_supervision
 
@@ -195,6 +200,8 @@ Arrêt : `Ctrl+C` (le rapport SLA est alors finalisé).
 
 Pour une utilisation en Linux, remplacer `python` par `python3`
 
+---
+
 ### 5.Script5_analyse_logs
 
 S5 - Analyse de logs et détection d'anomalies
@@ -224,6 +231,7 @@ Usage :
 
 Pour une utilisation en Linux, remplacer `python` par `python3`
 
+---
 
 ### 6.script6_rgpd
 
