@@ -23,3 +23,35 @@ rapport/sauvegarde/*
 
 rapport/supervision/*
 !rapport/supervision/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Outils / IDE
+.vscode/
+.idea/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Variables d'environnement
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
