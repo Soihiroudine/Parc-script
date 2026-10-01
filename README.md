@@ -37,25 +37,25 @@ Comment lancé le programme
 Analyse globale du réseau :
 
 ```shell
-    python ./script/script.py
+    python ./script/script1_inventaire.py
 
-    python3 ./script/script.py # En linux
+    python3 ./script/script1_inventaire.py # En linux
 ```
 
 Analyse d'une plage précise :
 
 ```shell
-   python ./script/script.py --debut 192.168.1.10 --fin 192.168.1.50
+   python ./script/script1_inventaire.py --debut 192.168.1.10 --fin 192.168.1.50
 
-   python3 ./script/script.py --debut 192.168.1.10 --fin 192.168.1.50 # En linux
+   python3 ./script/script1_inventaire.py --debut 192.168.1.10 --fin 192.168.1.50 # En linux
 ```
 
  Afficher l'aide :
 
 ```shell
-    python ./script/script.py --help
+    python ./script/script1_inventaire.py --help
 
-    python3 ./script/script.py --help # En linux
+    python3 ./script/script1_inventaire.py --help # En linux
 ```
 
 - Si `--debut` et `--fin` ne sont pas renseignés :

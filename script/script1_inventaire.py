@@ -17,17 +17,17 @@ import argparse
 #
 # Analyse globale du réseau :
 #
-#   python ./script/script.py
+#   python ./script/script1_inventaire.py
 #
 #
 # Analyse d'une plage précise :
 #
-#   python ./script/script.py --debut 192.168.1.10 --fin 192.168.1.50
+#   python ./script/script1_inventaire.py --debut 192.168.1.10 --fin 192.168.1.50
 #
 #
 # Afficher l'aide :
 #
-#   python ./script/script.py --help
+#   python ./script/script1_inventaire.py --help
 #
 #
 # Si --debut et --fin ne sont pas renseignés :
