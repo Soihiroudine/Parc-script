@@ -3,6 +3,7 @@ logs/*
 *.txt
 *.log
 *.json
+
 rapport/analyse_logs/*
 rapport/audit_securite/*
 rapport/inventaire/*
