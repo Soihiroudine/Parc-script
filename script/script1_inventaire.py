@@ -73,7 +73,7 @@ RESEAU = get_network_cidr(ip, netmask)
 
 # Définition des chemins pour les rapports et les logs
 PROJET = Path(__file__).resolve().parent.parent
-DOSSIER_RAPPORTS = PROJET / "rapports" / "inventaire"
+DOSSIER_RAPPORTS = PROJET / "rapport" / "inventaire"
 DOSSIER_LOGS = PROJET / "logs"
 
 # Date actuelle pour nommer les fichiers
