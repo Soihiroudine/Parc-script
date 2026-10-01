@@ -2,3 +2,10 @@ logs/*
 *.csv
 *.txt
 *.log
+*.json
+rapport/analyse_logs/*
+rapport/audit_securite/*
+rapport/inventaire/*
+rapport/rgpd/*
+rapport/sauvegarde/*
+rapport/supervision/*
