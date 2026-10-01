@@ -73,7 +73,7 @@ AUDIT DE SÉCURITÉ - `WINDOWS` / `LINUX`
 
 Arborescence :
 
-```txt
+```bash
 mon_projet/
 │
 ├── script/
@@ -129,7 +129,7 @@ Utilisation :
 
 Copie d'un dossier vers un autre dossier
 
-```shell
+```bash
     python script3_sauvegarde.py --source ./donnees --destination ./sauvegardes
 ```
 
@@ -173,7 +173,7 @@ Liens avec le projet :
 
 Arborescence :
 
-```txt
+```bash
 Parc-script/
 ├── script/script4_supervision.py
 ├── logs/supervision.log, incidents.log
