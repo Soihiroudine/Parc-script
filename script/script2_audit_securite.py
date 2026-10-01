@@ -75,7 +75,7 @@ BASE_HTML = BASE_DIR / "rapport_conformite.html"
 
 LOG_DIR = PROJECT_DIR / "logs"
 
-REPORT_DIR = PROJECT_DIR / "rapports" / "audi_securite"
+REPORT_DIR = PROJECT_DIR / "rapport" / "audi_securite"
 
 
 # ============================================================
