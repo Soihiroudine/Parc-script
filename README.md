@@ -30,7 +30,7 @@ Les dossiers de notre projet
 
 ## Les scripts
 
-### Script1_inventaire
+### 1.Script1_inventaire
 
 Comment lancé le programme
 
@@ -67,7 +67,7 @@ Analyse d'une plage précise :
 - `--debut` et `--fin` doivent être utilisés ensemble.
 
 
-### Script2_audit_securite
+### 2.Script2_audit_securite
 
 AUDIT DE SÉCURITÉ - `WINDOWS` / `LINUX`
 
@@ -109,7 +109,7 @@ Lancement du script
 python ./script/script2_audit_securite.py
 ```
 
-### Script3_sauvegarde
+### 3.Script3_sauvegarde
 
 S3 - Sauvegarde automatisée avec vérification d'intégrité
 
@@ -147,7 +147,7 @@ Copie d'un dossier vers un autre dossier tous les n temps
 
 Pour pouvoir utilisé le script dans linux remplacé `python` à `python3`
 
-### Script4_supervision
+### 4.Script4_supervision
 
 S4 - Supervision et alerte de disponibilité des services
 Fichier : script4_supervision.py
@@ -195,7 +195,7 @@ Arrêt : `Ctrl+C` (le rapport SLA est alors finalisé).
 
 Pour une utilisation en Linux, remplacer `python` par `python3`
 
-### Script5_analyse_logs
+### 5.Script5_analyse_logs
 
 S5 - Analyse de logs et détection d'anomalies
 Fichier : script5_analyse_logs.py
@@ -225,7 +225,7 @@ Usage :
 Pour une utilisation en Linux, remplacer `python` par `python3`
 
 
-### script6_rgpd
+### 6.script6_rgpd
 
 S6 - Rapport de conformité RGPD automatisé
 Fichier : script6_rgpd.py
