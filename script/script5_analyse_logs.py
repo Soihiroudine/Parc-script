@@ -20,15 +20,19 @@ Fichiers générés (dans rapport/analyse_logs/) :
 Usage :
   python script5_analyse_logs.py                        # logs/auth.log par défaut
   python script5_analyse_logs.py -l logs/auth.log
-  python script5_analyse_logs.py --generer-demo         # crée un log simulé puis l'analyse
+  python script5_analyse_logs.py --generer-demo         # log simulé avec l'IP réelle de cette machine
+  python script5_analyse_logs.py --generer-demo --scan-reseau   # + IP trouvées par ping dans le réseau local
 """
 
 import argparse
 import csv
 import ipaddress
-import random
+import platform
 import re
+import socket
+import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -193,8 +197,12 @@ def ecrire_regles_firewall(suspectes, chemin):
     ]
     if not critiques:
         lignes.append("# Aucune IP de niveau critique détectée : rien à bloquer.")
+    locales = ips_locales()
     for s in critiques:
         ip = s["ip"]
+        if ip in locales:
+            lignes.append(f"# {ip} : IP de cette machine, NON bloquée ({s['total_echecs']} échecs)")
+            continue
         cmd = "ip6tables" if ":" in ip else "iptables"
         lignes.append(f"# {s['total_echecs']} échecs (pic {s['max_echecs_10min']}/10 min)")
         lignes.append(f"{cmd} -C INPUT -s {ip} -j DROP 2>/dev/null || {cmd} -A INPUT -s {ip} -j DROP")
@@ -256,40 +264,116 @@ def ecrire_rapport(chemin, fichier_log, nb_echecs, suspectes, hors_horaires):
 
 
 # --------------------------------------------------------------------------
-# Log simulé (pour tester le script)
+# Adresses IP réelles (machine locale + découverte réseau par ping)
 # --------------------------------------------------------------------------
-def generer_log_demo(chemin):
+def obtenir_ip_locale():
+    """IP de la machine qui exécute le script (interface utilisée pour sortir sur le réseau).
+    Aucun paquet n'est envoyé : la 'connexion' UDP sert seulement à choisir l'interface."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except OSError:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except OSError:
+            return "127.0.0.1"
+    finally:
+        s.close()
+
+
+def ips_locales():
+    """Ensemble des IP appartenant à cette machine (à ne jamais bloquer)."""
+    ips = {"127.0.0.1", "::1", obtenir_ip_locale()}
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None):
+            ips.add(info[4][0])
+    except OSError:
+        pass
+    return ips
+
+
+def ping(ip):
+    """True si l'hôte répond à un ping (Windows et Linux/macOS)."""
+    if platform.system().lower() == "windows":
+        cmd = ["ping", "-n", "1", "-w", "1000", ip]
+    else:
+        cmd = ["ping", "-c", "1", "-W", "1", ip]
+    try:
+        return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                              timeout=3).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def decouvrir_hotes(ip_locale, max_hotes=3):
+    """Balayage ping du /24 de la machine ; retourne les premières IP qui répondent."""
+    try:
+        reseau = ipaddress.ip_network(f"{ip_locale}/24", strict=False)
+    except ValueError:
+        return []
+    if not reseau.is_private or ip_locale.startswith("127."):
+        print("[i] Réseau non privé : balayage ping ignoré.")
+        return []
+    print(f"[i] Balayage ping de {reseau} (quelques secondes)...")
+    candidats = [str(h) for h in reseau.hosts() if str(h) != ip_locale]
+    with ThreadPoolExecutor(max_workers=64) as ex:
+        vivants = [ip for ip, ok in zip(candidats, ex.map(ping, candidats)) if ok]
+    return vivants[:max_hotes]
+
+
+# --------------------------------------------------------------------------
+# Log simulé (pour tester le script) - IP réelles, aucun tirage aléatoire
+# --------------------------------------------------------------------------
+def generer_log_demo(chemin, scan_reseau=False):
+    ip_locale = obtenir_ip_locale()
+    hote = socket.gethostname().split(".")[0]
+    sources = []
+    if scan_reseau:
+        sources = decouvrir_hotes(ip_locale)
+        print(f"[i] Hôtes trouvés par ping : {', '.join(sources) if sources else 'aucun'}")
+    if not sources:
+        sources = [ip_locale]
+        print(f"[i] IP de cette machine utilisée comme source simulée : {ip_locale}")
+
+    # Rôles dans le scénario (si une seule IP, elle joue tous les rôles)
+    ip_critique = sources[0]
+    ip_moderee = sources[1] if len(sources) > 1 else sources[0]
+    ip_faible = sources[2] if len(sources) > 2 else sources[-1]
+
     chemin.parent.mkdir(parents=True, exist_ok=True)
-    maintenant = datetime.now().replace(microsecond=0)
-    base = maintenant.replace(hour=14, minute=0, second=0)
+    base = datetime.now().replace(hour=14, minute=0, second=0, microsecond=0)
     lignes = []
 
     def horodatage(dt):
         return f"{dt:%b} {dt.day:>2} {dt:%H:%M:%S}"
 
+    def ajouter(dt, message):
+        lignes.append((dt, f"{horodatage(dt)} {hote} {message}"))
+
     # IP critique : 20 échecs en quelques minutes
     for i in range(20):
-        dt = base + timedelta(seconds=15 * i)
-        lignes.append((dt, f"{horodatage(dt)} srv01 sshd[1201]: Failed password for root from 203.0.113.50 port 4422{i % 10} ssh2"))
+        ajouter(base + timedelta(seconds=15 * i),
+                f"sshd[1201]: Failed password for root from {ip_critique} port 4422{i % 10} ssh2")
     # IP modérée : 8 échecs
     for i in range(8):
-        dt = base + timedelta(minutes=1, seconds=40 * i)
-        lignes.append((dt, f"{horodatage(dt)} srv01 sshd[1202]: Failed password for invalid user admin from 198.51.100.7 port 5100{i} ssh2"))
+        ajouter(base + timedelta(minutes=1, seconds=40 * i),
+                f"sshd[1202]: Failed password for invalid user admin from {ip_moderee} port 5100{i} ssh2")
     # IP sous le seuil : 3 échecs
     for i in range(3):
-        dt = base + timedelta(minutes=30 + i)
-        lignes.append((dt, f"{horodatage(dt)} srv01 sshd[1203]: Failed password for alice from 192.168.1.20 port 6000{i} ssh2"))
+        ajouter(base + timedelta(minutes=30 + i),
+                f"sshd[1203]: Failed password for alice from {ip_faible} port 6000{i} ssh2")
     # Connexions réussies : normale + hors horaires
-    dt = base + timedelta(minutes=45)
-    lignes.append((dt, f"{horodatage(dt)} srv01 sshd[1210]: Accepted password for alice from 192.168.1.20 port 60010 ssh2"))
-    dt = base.replace(hour=3, minute=12)
-    lignes.append((dt, f"{horodatage(dt)} srv01 sshd[1211]: Accepted publickey for bob from 192.168.1.35 port 60044 ssh2"))
-    dt = base.replace(hour=23, minute=40)
-    lignes.append((dt, f"{horodatage(dt)} srv01 sshd[1212]: Accepted password for root from 203.0.113.50 port 60099 ssh2"))
-    # Bruit
+    ajouter(base + timedelta(minutes=45),
+            f"sshd[1210]: Accepted password for alice from {ip_faible} port 60010 ssh2")
+    ajouter(base.replace(hour=3, minute=12),
+            f"sshd[1211]: Accepted publickey for bob from {ip_faible} port 60044 ssh2")
+    ajouter(base.replace(hour=23, minute=40),
+            f"sshd[1212]: Accepted password for root from {ip_critique} port 60099 ssh2")
+    # Bruit (lignes sans IP, horaires fixes)
     for i in range(5):
-        dt = base + timedelta(minutes=random.randint(0, 59))
-        lignes.append((dt, f"{horodatage(dt)} srv01 CRON[99{i}]: pam_unix(cron:session): session opened for user root"))
+        ajouter(base + timedelta(minutes=11 * i),
+                f"CRON[99{i}]: pam_unix(cron:session): session opened for user root")
 
     lignes.sort(key=lambda x: x[0])
     chemin.write_text("\n".join(l for _, l in lignes) + "\n", encoding="utf-8")
@@ -308,11 +392,13 @@ def main():
     parser.add_argument("--annee", type=int, default=datetime.now().year,
                         help="année à utiliser pour les logs syslog (sans année)")
     parser.add_argument("--generer-demo", action="store_true",
-                        help="génère un log simulé dans le fichier --log avant l'analyse")
+                        help="génère un log simulé (avec l'IP réelle de la machine) avant l'analyse")
+    parser.add_argument("--scan-reseau", action="store_true",
+                        help="avec --generer-demo : utilise des IP trouvées par ping dans le /24 local")
     args = parser.parse_args()
 
     if args.generer_demo:
-        generer_log_demo(args.log)
+        generer_log_demo(args.log, scan_reseau=args.scan_reseau)
 
     if not args.log.is_file():
         print(f"[!] Fichier de log introuvable : {args.log}", file=sys.stderr)
