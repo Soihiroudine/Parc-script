@@ -1,4 +1,57 @@
 logs/*
+!logs/.gitkeep
+
 *.csv
 *.txt
 *.log
+*.json
+
+rapport/analyse_logs/*
+!rapport/analyse_logs/.gitkeep
+
+rapport/audit_securite/*
+!rapport/audit_securite/.gitkeep
+
+rapport/inventaire/*
+!rapport/inventaire/.gitkeep
+
+rapport/rgpd/*
+!rapport/rgpd/.gitkeep
+
+rapport/sauvegarde/*
+!rapport/sauvegarde/.gitkeep
+
+rapport/supervision/*
+!rapport/supervision/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Outils / IDE
+.vscode/
+.idea/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Variables d'environnement
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
